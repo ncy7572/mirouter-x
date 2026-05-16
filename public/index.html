@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mirouter X</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Mirouter X</p>
+          <h1 id="routerName">Xiaomi Router</h1>
+        </div>
+        <div class="topbar-actions">
+          <div class="status-pill" id="collectorStatus">Connecting</div>
+          <button class="icon-button" id="refreshButton" title="Collect now" aria-label="Collect now">
+            <span>↻</span>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <section class="metrics-grid">
+          <article class="metric">
+            <span>WAN Down</span>
+            <strong id="wanDown">--</strong>
+          </article>
+          <article class="metric">
+            <span>WAN Up</span>
+            <strong id="wanUp">--</strong>
+          </article>
+          <article class="metric">
+            <span>Online</span>
+            <strong id="onlineCount">--</strong>
+          </article>
+          <article class="metric">
+            <span>CPU</span>
+            <strong id="cpuLoad">--</strong>
+          </article>
+          <article class="metric">
+            <span>Memory</span>
+            <strong id="memoryUsage">--</strong>
+          </article>
+          <article class="metric">
+            <span>Uptime</span>
+            <strong id="uptime">--</strong>
+          </article>
+        </section>
+
+        <section class="workspace">
+          <aside class="side-panel">
+            <div class="panel-head">
+              <h2>Clients</h2>
+              <span id="clientTotal">0</span>
+            </div>
+            <div class="client-search">
+              <input id="clientSearch" type="search" placeholder="Filter clients" autocomplete="off">
+            </div>
+            <div class="client-list" id="clientList"></div>
+          </aside>
+
+          <section class="chart-panel">
+            <div class="chart-head">
+              <div>
+                <h2 id="chartTitle">WAN Traffic</h2>
+                <p id="chartSubtitle">Downstream and upstream throughput</p>
+              </div>
+              <div class="range-tools">
+                <div class="segmented" id="rangeControl">
+                  <button data-range="15m" class="active">15m</button>
+                  <button data-range="1h">1h</button>
+                  <button data-range="6h">6h</button>
+                  <button data-range="1d">1d</button>
+                  <button data-range="30d">30d</button>
+                  <button data-range="custom">Time range</button>
+                </div>
+                <div class="custom-range" id="customRange" hidden>
+                  <input id="customFrom" type="datetime-local" aria-label="Start time">
+                  <input id="customTo" type="datetime-local" aria-label="End time">
+                  <button id="applyCustomRange" type="button">Apply</button>
+                </div>
+              </div>
+            </div>
+            <div class="chart-wrap">
+              <canvas id="trafficChart" tabindex="0" aria-label="Traffic chart"></canvas>
+              <div class="empty-chart" id="emptyChart">Waiting for traffic samples</div>
+              <div class="chart-tooltip" id="chartTooltip" role="status" aria-live="polite"></div>
+            </div>
+            <div class="legend">
+              <span><i class="down"></i>Down</span>
+              <span><i class="up"></i>Up</span>
+              <span id="bucketInfo"></span>
+            </div>
+            <div class="usage-grid">
+              <article class="usage-card">
+                <div class="usage-head">
+                  <h2>Accumulated Down</h2>
+                  <span id="usageDownTotal">--</span>
+                </div>
+                <div class="pie-row">
+                  <canvas id="usageDownChart" width="180" height="180" aria-label="Download usage pie chart"></canvas>
+                  <div class="pie-legend" id="usageDownLegend"></div>
+                </div>
+              </article>
+              <article class="usage-card">
+                <div class="usage-head">
+                  <h2>Accumulated Up</h2>
+                  <span id="usageUpTotal">--</span>
+                </div>
+                <div class="pie-row">
+                  <canvas id="usageUpChart" width="180" height="180" aria-label="Upload usage pie chart"></canvas>
+                  <div class="pie-legend" id="usageUpLegend"></div>
+                </div>
+              </article>
+            </div>
+          </section>
+        </section>
+
+        <section class="details-grid">
+          <article class="detail-panel">
+            <div class="panel-head">
+              <h2>Mesh</h2>
+              <span id="meshStatus">--</span>
+            </div>
+            <div id="meshList" class="mesh-list"></div>
+          </article>
+          <article class="detail-panel">
+            <div class="panel-head">
+              <h2>Wi-Fi</h2>
+              <span id="wifiStatus">--</span>
+            </div>
+            <div id="wifiList" class="wifi-list"></div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

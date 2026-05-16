@@ -1,0 +1,13 @@
+{
+  "name": "mirouter-x",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "node --disable-warning=ExperimentalWarning src/server.js",
+    "test": "node --disable-warning=ExperimentalWarning src/smoke-test.js"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
