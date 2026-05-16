@@ -233,7 +233,7 @@ function renderSummary() {
     : 'Xiaomi Router';
 
   els.collectorStatus.classList.remove('ok', 'error');
-  if (!settings.hasToken) {
+  if (!settings.hasToken && !settings.canRefreshToken) {
     els.collectorStatus.textContent = 'No token';
     els.collectorStatus.classList.add('error');
   } else if (collector.lastError) {

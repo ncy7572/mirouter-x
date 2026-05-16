@@ -28,6 +28,9 @@ function intEnv(name, fallback, min, max) {
 export const config = {
   host: process.env.MIROUTER_HOST || '192.168.31.1',
   stok: process.env.MIROUTER_STOK || '',
+  password: process.env.MIROUTER_PASSWORD || '',
+  nonceDeviceId: process.env.MIROUTER_NONCE_DEVICE_ID || process.env.MIROUTER_DEVICE_ID || '',
+  authKey: process.env.MIROUTER_AUTH_KEY || 'A2E371B0-B34B-48A5-8C40-A7133F3B5D88',
   pollSeconds: intEnv('MIROUTER_POLL_SECONDS', 30, 5, 3600),
   retentionDays: intEnv('MIROUTER_RETENTION_DAYS', 365, 1, 3650),
   port: intEnv('PORT', 3102, 1, 65535),

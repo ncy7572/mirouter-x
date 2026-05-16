@@ -86,7 +86,7 @@ function handleApi(req, res, url) {
         host: config.host,
         pollSeconds: config.pollSeconds,
         retentionDays: config.retentionDays,
-        hasToken: Boolean(config.stok)
+        ...router.authState()
       }
     });
     return true;
