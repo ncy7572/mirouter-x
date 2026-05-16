@@ -31,5 +31,6 @@ export const config = {
   pollSeconds: intEnv('MIROUTER_POLL_SECONDS', 30, 5, 3600),
   retentionDays: intEnv('MIROUTER_RETENTION_DAYS', 365, 1, 3650),
   port: intEnv('PORT', 3102, 1, 65535),
+  listenHost: process.env.HOST || '127.0.0.1',
   dbPath: process.env.MIROUTER_DB || resolve(process.cwd(), 'data', 'mirouter.sqlite')
 };

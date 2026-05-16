@@ -1,0 +1,18 @@
+services:
+  mirouter-x:
+    build: .
+    container_name: mirouter-x
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3102}:3102"
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3102
+      MIROUTER_DB: /app/data/mirouter.sqlite
+    volumes:
+      - mirouter-data:/app/data
+
+volumes:
+  mirouter-data:

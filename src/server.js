@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { existsSync, createReadStream } from 'node:fs';
-import { extname, join, resolve } from 'node:path';
+import { extname, relative, resolve, sep } from 'node:path';
 import { config } from './config.js';
 import { Store } from './db.js';
 import { RouterClient } from './router-client.js';
@@ -32,7 +32,7 @@ function sendJson(res, status, payload) {
 }
 
 function parseUrl(req) {
-  return new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
+  return new URL(req.url || '/', 'http://127.0.0.1');
 }
 
 function parseTimeRange(url) {
@@ -73,6 +73,11 @@ async function collect() {
 }
 
 function handleApi(req, res, url) {
+  if (url.pathname === '/api/health') {
+    sendJson(res, 200, { ok: true });
+    return true;
+  }
+
   if (url.pathname === '/api/summary') {
     sendJson(res, 200, {
       ...store.summary(),
@@ -99,7 +104,7 @@ function handleApi(req, res, url) {
     sendJson(res, 200, store.series({
       from,
       to,
-      maxPoints: Number.isFinite(maxPoints) ? maxPoints : 900,
+      maxPoints: Number.isFinite(maxPoints) ? Math.min(Math.max(maxPoints, 1), 10080) : 900,
       mac
     }));
     return true;
@@ -122,7 +127,8 @@ function handleApi(req, res, url) {
 function serveStatic(req, res, url) {
   const pathname = url.pathname === '/' ? '/index.html' : url.pathname;
   const filePath = resolve(publicDir, `.${pathname}`);
-  if (!filePath.startsWith(publicDir) || !existsSync(filePath)) {
+  const fileRelativePath = relative(publicDir, filePath);
+  if (fileRelativePath.startsWith('..') || fileRelativePath.includes(`..${sep}`) || fileRelativePath === '' || !existsSync(filePath)) {
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
     res.end('Not found');
     return;
@@ -137,8 +143,8 @@ const server = createServer((req, res) => {
   serveStatic(req, res, url);
 });
 
-server.listen(config.port, '127.0.0.1', () => {
-  console.log(`Mirouter X dashboard: http://127.0.0.1:${config.port}`);
+server.listen(config.port, config.listenHost, () => {
+  console.log(`Mirouter X dashboard: http://${config.listenHost}:${config.port}`);
   collect();
   setInterval(collect, config.pollSeconds * 1000).unref();
 });
