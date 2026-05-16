@@ -12,7 +12,4 @@ services:
       PORT: 3102
       MIROUTER_DB: /app/data/mirouter.sqlite
     volumes:
-      - mirouter-data:/app/data
-
-volumes:
-  mirouter-data:
+      - ./data:/app/data

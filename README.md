@@ -22,7 +22,7 @@ docker compose up --build -d
 
 Open `http://127.0.0.1:3102`.
 
-The Compose file stores SQLite data in the `mirouter-data` volume. To run a
+The Compose file stores SQLite data in the host `./data` directory. To run a
 prebuilt image directly, mount `/app/data` and publish port `3102`:
 
 ```sh
@@ -32,7 +32,7 @@ docker run -d --name mirouter-x \
   -e HOST=0.0.0.0 \
   -e MIROUTER_DB=/app/data/mirouter.sqlite \
   -p 3102:3102 \
-  -v mirouter-data:/app/data \
+  -v "$PWD/data:/app/data" \
   mirouter-x
 ```
 
