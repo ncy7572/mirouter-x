@@ -222,8 +222,18 @@ h2 {
   border-radius: 999px;
   background: var(--surface);
   color: var(--muted);
+  cursor: pointer;
   text-align: center;
   box-shadow: var(--shadow);
+}
+
+.status-pill:hover {
+  background: var(--hover);
+}
+
+.status-pill:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .status-pill.ok {
@@ -269,29 +279,6 @@ h2 {
 .lang-toggle:hover {
   background: var(--hover);
   color: var(--accent);
-}
-
-.live-toggle {
-  height: 38px;
-  min-width: 68px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--good);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 700;
-  box-shadow: var(--shadow);
-}
-
-.live-toggle.static {
-  color: var(--warn);
-  border-color: var(--warn);
-}
-
-.live-toggle:hover {
-  background: var(--hover);
 }
 
 .icon-button:hover {

@@ -16,13 +16,12 @@ const state = {
   prevRanges: [],
   chartLoading: false,
   lang: 'en',
-  liveMode: true
+  liveUpdates: true
 };
 
 const els = {
   routerName: document.querySelector('#routerName'),
   collectorStatus: document.querySelector('#collectorStatus'),
-  liveToggle: document.querySelector('#liveToggle'),
   langToggle: document.querySelector('#langToggle'),
   themeSelect: document.querySelector('#themeSelect'),
   refreshButton: document.querySelector('#refreshButton'),
@@ -67,6 +66,7 @@ restoreRangePreference();
 restoreClientMetricPreference();
 restoreLanguagePreference();
 restoreThemePreference();
+restoreLiveUpdatePreference();
 
 const translations = {
   en: {
@@ -88,7 +88,8 @@ const translations = {
     filterClients: 'Filter clients',
     latest: 'Latest',
     live: 'Live',
-    static: 'Static',
+    liveMode: 'Live',
+    liveUpdatesLabel: 'Toggle live updates',
     memory: 'Memory',
     mesh: 'Mesh',
     noDownloadData: 'No download data',
@@ -102,6 +103,7 @@ const translations = {
     online: 'Online',
     root: 'root',
     startTime: 'Start time',
+    staticMode: 'Static',
     timeRange: 'Time range',
     total: 'Total',
     traffic: 'Traffic',
@@ -140,7 +142,8 @@ const translations = {
     filterClients: '筛选客户端',
     latest: '实时',
     live: '在线',
-    static: '静态',
+    liveMode: '实时',
+    liveUpdatesLabel: '切换实时更新',
     memory: '内存',
     mesh: 'Mesh',
     noDownloadData: '暂无下载数据',
@@ -154,6 +157,7 @@ const translations = {
     online: '在线',
     root: '主节点',
     startTime: '开始时间',
+    staticMode: '静态',
     timeRange: '时间范围',
     total: '总计',
     traffic: '流量',
@@ -213,7 +217,6 @@ const rowHtmlCache = new WeakMap();
 
 applyLanguage();
 applyTheme();
-renderLiveToggle();
 
 function formatRate(value) {
   return `${formatBytes(value)}/s`;
@@ -315,6 +318,7 @@ function applyLanguage() {
   els.langToggle.setAttribute('aria-label', state.lang === 'zh' ? 'Switch to English' : '切换到中文');
   els.refreshButton.title = t('collectNow');
   els.refreshButton.setAttribute('aria-label', t('collectNow'));
+  els.collectorStatus.setAttribute('aria-label', t('liveUpdatesLabel'));
   els.chart.setAttribute('aria-label', t('trafficChart'));
   updateThemeLabels();
   document.querySelectorAll('[data-i18n]').forEach((item) => {
@@ -332,18 +336,6 @@ function applyLanguage() {
 function applyTheme() {
   document.documentElement.dataset.theme = state.theme;
   els.themeSelect.value = state.theme;
-}
-
-function renderLiveToggle() {
-  const span = els.liveToggle.querySelector('span');
-  if (state.liveMode) {
-    els.liveToggle.classList.remove('static');
-    els.liveToggle.title = state.lang === 'zh' ? '点击暂停自动更新' : 'Click to pause auto-updates';
-  } else {
-    els.liveToggle.classList.add('static');
-    els.liveToggle.title = state.lang === 'zh' ? '点击恢复自动更新' : 'Click to resume auto-updates';
-  }
-  span.textContent = state.liveMode ? t('live') : t('static');
 }
 
 function updateThemeLabels() {
@@ -496,6 +488,14 @@ function saveRangePreference() {
   }));
 }
 
+function restoreLiveUpdatePreference() {
+  state.liveUpdates = localStorage.getItem('mirouter.liveUpdates') !== 'false';
+}
+
+function saveLiveUpdatePreference() {
+  localStorage.setItem('mirouter.liveUpdates', String(state.liveUpdates));
+}
+
 function syncRangeButtonStates() {
   const rangePoints = state.summary?.rangePoints ?? {};
   els.rangeControl.querySelectorAll('button[data-range]').forEach((btn) => {
@@ -543,17 +543,19 @@ function renderSummary() {
     : t('xiaomiRouter');
 
   els.collectorStatus.classList.remove('ok', 'error');
+  els.collectorStatus.setAttribute('aria-pressed', String(state.liveUpdates));
   if (!settings.hasToken && !settings.canRefreshToken) {
     els.collectorStatus.textContent = t('noPassword');
     els.collectorStatus.classList.add('error');
+    els.collectorStatus.title = state.liveUpdates ? t('liveMode') : t('staticMode');
   } else if (collector.lastError) {
     els.collectorStatus.textContent = t('offline');
     els.collectorStatus.classList.add('error');
-    els.collectorStatus.title = collector.lastError;
+    els.collectorStatus.title = `${state.liveUpdates ? t('liveMode') : t('staticMode')}: ${collector.lastError}`;
   } else {
-    els.collectorStatus.textContent = t('live');
+    els.collectorStatus.textContent = state.liveUpdates ? t('liveMode') : t('staticMode');
     els.collectorStatus.classList.add('ok');
-    els.collectorStatus.title = '';
+    els.collectorStatus.title = t('liveUpdatesLabel');
   }
 
   els.wanDown.textContent = formatRate(latest?.wan_down_bps);
@@ -570,16 +572,15 @@ function renderSummary() {
 }
 
 function scheduleRefresh(pollSeconds) {
-  const refreshMs = Math.max(1000, (Number(pollSeconds) || 30) * 1000);
-  if (state.refreshTimer?.refreshMs === refreshMs) return;
-  if (state.refreshTimer) clearInterval(state.refreshTimer.id);
-  
-  if (!state.liveMode) {
-    // In static mode, don't schedule auto-refresh
+  if (!state.liveUpdates) {
+    if (state.refreshTimer) clearInterval(state.refreshTimer.id);
     state.refreshTimer = null;
     return;
   }
-  
+  const refreshMs = Math.max(1000, (Number(pollSeconds) || 30) * 1000);
+  if (state.refreshTimer?.refreshMs === refreshMs) return;
+  if (state.refreshTimer) clearInterval(state.refreshTimer.id);
+
   state.refreshTimer = {
     refreshMs,
     id: setInterval(() => {
@@ -1278,7 +1279,6 @@ els.langToggle.addEventListener('click', () => {
   state.lang = state.lang === 'zh' ? 'en' : 'zh';
   saveLanguagePreference();
   applyLanguage();
-  renderLiveToggle();
   if (state.summary) renderSummary();
   renderClients();
   renderChart();
@@ -1293,20 +1293,18 @@ els.themeSelect.addEventListener('change', () => {
   renderUsageCharts();
   syncWorkspaceHeights();
 });
-els.liveToggle.addEventListener('click', () => {
-  state.liveMode = !state.liveMode;
-  renderLiveToggle();
-  if (state.liveMode && state.summary) {
-    // Switching to live: re-schedule refresh with current settings
-    scheduleRefresh(state.summary.settings?.pollSeconds);
-    // Immediately load latest data
-    loadAll().catch(() => {});
-  }
-});
 els.refreshButton.addEventListener('click', async () => {
   els.collectorStatus.textContent = t('collecting');
   await getJson('/api/collect', { method: 'POST' });
   await loadAll();
+});
+
+els.collectorStatus.addEventListener('click', () => {
+  state.liveUpdates = !state.liveUpdates;
+  saveLiveUpdatePreference();
+  if (state.summary) {
+    renderSummary();
+  }
 });
 
 els.chart.addEventListener('mousedown', (event) => {
