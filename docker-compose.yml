@@ -4,12 +4,12 @@ services:
     container_name: mirouter-x
     restart: unless-stopped
     ports:
-      - "${HOST_PORT:-3102}:3102"
+      - "${PORT:-3102}:${PORT:-3102}"
     env_file:
       - .env
     environment:
       HOST: 0.0.0.0
-      PORT: 3102
+      PORT: ${PORT:-3102}
       MIROUTER_DB: /app/data/mirouter.sqlite
     volumes:
       - ./data:/app/data

@@ -48,11 +48,11 @@ if (JSON.stringify(summary).includes('secret')) {
   throw new Error('Sensitive Wi-Fi password was persisted');
 }
 
-await testRouterClientTokenRefresh();
+await testRouterClientPasswordLogin();
 
 console.log('Smoke test passed');
 
-async function testRouterClientTokenRefresh() {
+async function testRouterClientPasswordLogin() {
   let loginCount = 0;
   const requests = [];
   const server = createServer(async (req, res) => {
@@ -65,8 +65,8 @@ async function testRouterClientTokenRefresh() {
       if (
         form.get('username') !== 'admin'
         || form.get('logtype') !== '2'
-        || !/^0_aabbccddeeff_\d+_\d+$/.test(form.get('nonce') || '')
-        || !/^[a-f0-9]{40}$/.test(form.get('password') || '')
+        || !/^0_aa:bb:cc:dd:ee:ff_\d+_\d+$/.test(form.get('nonce') || '')
+        || !/^[a-f0-9]{64}$/.test(form.get('password') || '')
       ) {
         sendTestJson(res, { code: 1, msg: 'bad login form' });
         return;
@@ -75,8 +75,8 @@ async function testRouterClientTokenRefresh() {
       return;
     }
 
-    if (req.url?.includes(';stok=stale-token/')) {
-      sendTestJson(res, { code: 401, msg: 'invalid stok' });
+    if (req.url === '/cgi-bin/luci/api/xqsystem/init_info') {
+      sendTestJson(res, { code: 0, newEncryptMode: 1 });
       return;
     }
 
@@ -108,17 +108,16 @@ async function testRouterClientTokenRefresh() {
   try {
     const router = new RouterClient({
       host: `127.0.0.1:${port}`,
-      stok: 'stale-token',
       password: 'router-password',
       nonceDeviceId: 'AA:BB:CC:DD:EE:FF',
       authKey: 'test-key'
     });
     const snapshot = await router.snapshot();
     if (snapshot.status.code !== 0 || router.authState().hasToken !== true) {
-      throw new Error('Router auth refresh test failed');
+      throw new Error('Router password login test failed');
     }
     if (loginCount !== 1 || !requests.some((url) => url?.includes(';stok=fresh-token/'))) {
-      throw new Error('Router auth refresh was not exercised');
+      throw new Error('Router password login was not exercised');
     }
   } finally {
     await new Promise((resolve) => server.close(resolve));

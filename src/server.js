@@ -4,6 +4,7 @@ import { extname, relative, resolve, sep } from 'node:path';
 import { config } from './config.js';
 import { Store } from './db.js';
 import { RouterClient } from './router-client.js';
+import { logError, logInfo } from './logger.js';
 
 const publicDir = resolve(process.cwd(), 'public');
 const store = new Store(config.dbPath);
@@ -13,6 +14,7 @@ const state = {
   lastError: '',
   lastCollectedAt: 0
 };
+const maxChartPoints = 1500;
 
 const mime = {
   '.html': 'text/html; charset=utf-8',
@@ -62,11 +64,12 @@ async function collect() {
   try {
     const snapshot = await router.snapshot();
     const ts = store.saveSnapshot(snapshot);
-    store.cleanup(config.retentionDays);
+    store.cleanup(config.retentionDetDays, config.retentionAggDays);
     state.lastCollectedAt = ts;
     state.lastError = '';
   } catch (error) {
     state.lastError = error.message;
+    logError(`[Mirouter X] collect failed: ${error.message}`);
   } finally {
     state.collecting = false;
   }
@@ -85,7 +88,8 @@ function handleApi(req, res, url) {
       settings: {
         host: config.host,
         pollSeconds: config.pollSeconds,
-        retentionDays: config.retentionDays,
+        retentionDetDays: config.retentionDetDays,
+        retentionAggDays: config.retentionAggDays,
         ...router.authState()
       }
     });
@@ -104,7 +108,7 @@ function handleApi(req, res, url) {
     sendJson(res, 200, store.series({
       from,
       to,
-      maxPoints: Number.isFinite(maxPoints) ? Math.min(Math.max(maxPoints, 1), 10080) : 900,
+      maxPoints: Number.isFinite(maxPoints) ? Math.min(Math.max(maxPoints, 1), maxChartPoints) : 900,
       mac
     }));
     return true;
@@ -144,7 +148,17 @@ const server = createServer((req, res) => {
 });
 
 server.listen(config.port, config.listenHost, () => {
-  console.log(`Mirouter X dashboard: http://${config.listenHost}:${config.port}`);
+  logInfo(`Mirouter X dashboard: http://${config.listenHost}:${config.port}`);
   collect();
+  store.rollup();
   setInterval(collect, config.pollSeconds * 1000).unref();
+  setInterval(() => store.rollup(), 60 * 1000).unref();
+  if (config.logSummaryMinutes > 0) {
+    setInterval(logApiSummary, config.logSummaryMinutes * 60 * 1000).unref();
+  }
 });
+
+function logApiSummary() {
+  const stats = router.consumeApiStats();
+  logInfo(`[Mirouter X] API summary (${config.logSummaryMinutes}m): ${stats.success} success, ${stats.failed} failed`);
+}

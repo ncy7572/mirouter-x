@@ -14,7 +14,20 @@
           <h1 id="routerName">Xiaomi Router</h1>
         </div>
         <div class="topbar-actions">
-          <div class="status-pill" id="collectorStatus">Connecting</div>
+          <div class="status-pill" id="collectorStatus" data-i18n="connecting">Connecting</div>
+          <select class="theme-select" id="themeSelect" aria-label="Theme">
+            <optgroup label="Light">
+              <option value="light-warm">Light Warm</option>
+              <option value="light-sage">Light Sage</option>
+              <option value="light-paper">Light Paper</option>
+            </optgroup>
+            <optgroup label="Dark">
+              <option value="dark-ember">Dark Ember</option>
+              <option value="dark-forest">Dark Forest</option>
+              <option value="dark-graphite">Dark Graphite</option>
+            </optgroup>
+          </select>
+          <button class="lang-toggle" id="langToggle" type="button" aria-label="Switch language">中文</button>
           <button class="icon-button" id="refreshButton" title="Collect now" aria-label="Collect now">
             <span>↻</span>
           </button>
@@ -24,15 +37,15 @@
       <main>
         <section class="metrics-grid">
           <article class="metric">
-            <span>WAN Down</span>
+            <span data-i18n="wanDown">WAN Down</span>
             <strong id="wanDown">--</strong>
           </article>
           <article class="metric">
-            <span>WAN Up</span>
+            <span data-i18n="wanUp">WAN Up</span>
             <strong id="wanUp">--</strong>
           </article>
           <article class="metric">
-            <span>Online</span>
+            <span data-i18n="online">Online</span>
             <strong id="onlineCount">--</strong>
           </article>
           <article class="metric">
@@ -40,11 +53,11 @@
             <strong id="cpuLoad">--</strong>
           </article>
           <article class="metric">
-            <span>Memory</span>
+            <span data-i18n="memory">Memory</span>
             <strong id="memoryUsage">--</strong>
           </article>
           <article class="metric">
-            <span>Uptime</span>
+            <span data-i18n="uptime">Uptime</span>
             <strong id="uptime">--</strong>
           </article>
         </section>
@@ -52,11 +65,13 @@
         <section class="workspace">
           <aside class="side-panel">
             <div class="panel-head">
-              <h2>Clients</h2>
-              <span id="clientTotal">0</span>
+              <h2><span data-i18n="clients">Clients</span> <span id="clientTotal" class="client-count">0 Total</span></h2>
+              <div class="client-head-actions">
+                <button id="clientMetricToggle" class="metric-toggle" type="button" aria-pressed="true">Accumulated</button>
+              </div>
             </div>
             <div class="client-search">
-              <input id="clientSearch" type="search" placeholder="Filter clients" autocomplete="off">
+              <input id="clientSearch" type="search" placeholder="Filter clients" autocomplete="off" data-i18n-placeholder="filterClients">
             </div>
             <div class="client-list" id="clientList"></div>
           </aside>
@@ -68,35 +83,36 @@
                 <p id="chartSubtitle">Downstream and upstream throughput</p>
               </div>
               <div class="range-tools">
+                <button class="zoom-out-button" id="zoomOutButton" type="button" hidden data-i18n="zoomOut">↩ Zoom out</button>
                 <div class="segmented" id="rangeControl">
                   <button data-range="15m" class="active">15m</button>
                   <button data-range="1h">1h</button>
                   <button data-range="6h">6h</button>
                   <button data-range="1d">1d</button>
                   <button data-range="30d">30d</button>
-                  <button data-range="custom">Time range</button>
+                  <button data-range="custom" data-i18n="timeRange">Time range</button>
                 </div>
                 <div class="custom-range" id="customRange" hidden>
-                  <input id="customFrom" type="datetime-local" aria-label="Start time">
-                  <input id="customTo" type="datetime-local" aria-label="End time">
-                  <button id="applyCustomRange" type="button">Apply</button>
+                  <input id="customFrom" type="datetime-local" aria-label="Start time" data-i18n-aria-label="startTime">
+                  <input id="customTo" type="datetime-local" aria-label="End time" data-i18n-aria-label="endTime">
+                  <button id="applyCustomRange" type="button" data-i18n="apply">Apply</button>
                 </div>
               </div>
             </div>
             <div class="chart-wrap">
               <canvas id="trafficChart" tabindex="0" aria-label="Traffic chart"></canvas>
-              <div class="empty-chart" id="emptyChart">Waiting for traffic samples</div>
+              <div class="empty-chart" id="emptyChart" data-i18n="waitingSamples">Waiting for traffic samples</div>
               <div class="chart-tooltip" id="chartTooltip" role="status" aria-live="polite"></div>
             </div>
             <div class="legend">
-              <span><i class="down"></i>Down</span>
-              <span><i class="up"></i>Up</span>
+              <span><i class="down"></i><span data-i18n="down">Down</span></span>
+              <span><i class="up"></i><span data-i18n="up">Up</span></span>
               <span id="bucketInfo"></span>
             </div>
             <div class="usage-grid">
               <article class="usage-card">
                 <div class="usage-head">
-                  <h2>Accumulated Down</h2>
+                  <h2 data-i18n="accumulatedDown">Accumulated Down</h2>
                   <span id="usageDownTotal">--</span>
                 </div>
                 <div class="pie-row">
@@ -106,7 +122,7 @@
               </article>
               <article class="usage-card">
                 <div class="usage-head">
-                  <h2>Accumulated Up</h2>
+                  <h2 data-i18n="accumulatedUp">Accumulated Up</h2>
                   <span id="usageUpTotal">--</span>
                 </div>
                 <div class="pie-row">
@@ -121,14 +137,14 @@
         <section class="details-grid">
           <article class="detail-panel">
             <div class="panel-head">
-              <h2>Mesh</h2>
+              <h2 data-i18n="mesh">Mesh</h2>
               <span id="meshStatus">--</span>
             </div>
             <div id="meshList" class="mesh-list"></div>
           </article>
           <article class="detail-panel">
             <div class="panel-head">
-              <h2>Wi-Fi</h2>
+              <h2 data-i18n="wifi">Wi-Fi</h2>
               <span id="wifiStatus">--</span>
             </div>
             <div id="wifiList" class="wifi-list"></div>

@@ -27,12 +27,13 @@ function intEnv(name, fallback, min, max) {
 
 export const config = {
   host: process.env.MIROUTER_HOST || '192.168.31.1',
-  stok: process.env.MIROUTER_STOK || '',
   password: process.env.MIROUTER_PASSWORD || '',
   nonceDeviceId: process.env.MIROUTER_NONCE_DEVICE_ID || process.env.MIROUTER_DEVICE_ID || '',
-  authKey: process.env.MIROUTER_AUTH_KEY || 'A2E371B0-B34B-48A5-8C40-A7133F3B5D88',
-  pollSeconds: intEnv('MIROUTER_POLL_SECONDS', 30, 5, 3600),
-  retentionDays: intEnv('MIROUTER_RETENTION_DAYS', 365, 1, 3650),
+  authKey: process.env.MIROUTER_AUTH_KEY || 'a2ffa5c9be07488bbb04a3a47d3c5f6a',
+  pollSeconds: intEnv('MIROUTER_POLL_SECONDS', 30, 1, 3600),
+  logSummaryMinutes: intEnv('MIROUTER_LOG_SUMMARY_MINUTES', 10, 0, 1440),
+  retentionDetDays: intEnv('MIROUTER_RETENTION_DET_DAYS', 7, 1, 3650),
+  retentionAggDays: intEnv('MIROUTER_RETENTION_AGG_DAYS', 365, 1, 3650),
   port: intEnv('PORT', 3102, 1, 65535),
   listenHost: process.env.HOST || '127.0.0.1',
   dbPath: process.env.MIROUTER_DB || resolve(process.cwd(), 'data', 'mirouter.sqlite')

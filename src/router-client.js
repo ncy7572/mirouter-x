@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { logInfo } from './logger.js';
 
 class RouterAuthError extends Error {
   constructor(message) {
@@ -10,19 +11,22 @@ class RouterAuthError extends Error {
 export class RouterClient {
   constructor({
     host,
-    stok,
     password,
     nonceDeviceId,
     authKey,
     timeoutMs = 6000
   }) {
     this.host = host;
-    this.stok = stok;
+    this.stok = '';
     this.password = password;
     this.nonceDeviceId = nonceDeviceId || randomDeviceId();
     this.authKey = authKey;
     this.timeoutMs = timeoutMs;
     this.loginPromise = null;
+    this.apiStats = {
+      success: 0,
+      failed: 0
+    };
   }
 
   url(path, { authenticated = true } = {}) {
@@ -41,6 +45,12 @@ export class RouterClient {
   } = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    let counted = false;
+    const recordOnce = (success) => {
+      if (counted) return;
+      this.recordApiCall(success);
+      counted = true;
+    };
     try {
       if (authenticated && !this.stok) {
         await this.ensureAuthenticated();
@@ -54,6 +64,7 @@ export class RouterClient {
       });
       const text = await response.text();
       if (!response.ok) {
+        recordOnce(false);
         if (authenticated && retryAuth && this.password && (response.status === 401 || response.status === 403)) {
           await this.login({ force: true });
           return this.request(path, {
@@ -67,6 +78,8 @@ export class RouterClient {
       }
 
       const payload = parseJson(text, path);
+      const callSucceeded = apiCallSucceeded(payload);
+      recordOnce(callSucceeded);
       if (authenticated && isAuthFailure(payload)) {
         if (retryAuth && this.password) {
           await this.login({ force: true });
@@ -77,10 +90,13 @@ export class RouterClient {
             retryAuth: false
           });
         }
-        throw new RouterAuthError(payload.msg || 'Router authentication failed; refresh MIROUTER_STOK or set MIROUTER_PASSWORD');
+        throw new RouterAuthError(payload.msg || 'Router authentication failed; check MIROUTER_PASSWORD');
       }
 
       return payload;
+    } catch (error) {
+      recordOnce(false);
+      throw error;
     } finally {
       clearTimeout(timer);
     }
@@ -93,7 +109,7 @@ export class RouterClient {
   async ensureAuthenticated() {
     if (this.stok) return;
     if (!this.password) {
-      throw new RouterAuthError('MIROUTER_STOK is not configured and MIROUTER_PASSWORD is not set');
+      throw new RouterAuthError('MIROUTER_PASSWORD is not configured');
     }
     await this.login();
   }
@@ -113,8 +129,19 @@ export class RouterClient {
   }
 
   async performLogin() {
+    const initInfo = await this.request('api/xqsystem/init_info', {
+      authenticated: false,
+      retryAuth: false
+    });
+    const useSha256 = Number(initInfo?.newEncryptMode) === 1;
+    logInfo(`[Mirouter X] requesting stok from ${this.host} (${useSha256 ? 'sha256' : 'sha1'} login)`);
     const nonce = this.createNonce();
-    const passwordHash = sha1(nonce + sha1(this.password + this.authKey));
+    const passwordHash = hashPassword({
+      password: this.password,
+      authKey: this.authKey,
+      nonce,
+      useSha256
+    });
     const form = new URLSearchParams({
       username: 'admin',
       password: passwordHash,
@@ -134,12 +161,29 @@ export class RouterClient {
       throw new RouterAuthError(payload.msg || `Router login failed with code ${payload.code ?? 'unknown'}`);
     }
 
-    this.stok = stok;
+    this.updateStok(stok);
     return this.stok;
   }
 
+  updateStok(stok) {
+    this.stok = stok;
+    logInfo(`[Mirouter X] stok updated: ${stok}`);
+  }
+
+  recordApiCall(success) {
+    if (success) this.apiStats.success += 1;
+    else this.apiStats.failed += 1;
+  }
+
+  consumeApiStats() {
+    const stats = { ...this.apiStats };
+    this.apiStats.success = 0;
+    this.apiStats.failed = 0;
+    return stats;
+  }
+
   createNonce() {
-    const deviceId = String(this.nonceDeviceId).replace(/:/g, '').toLowerCase();
+    const deviceId = String(this.nonceDeviceId).toLowerCase();
     const timestamp = Math.floor(Date.now() / 1000);
     const random = Math.floor(Math.random() * 10000);
     return `0_${deviceId}_${timestamp}_${random}`;
@@ -183,12 +227,31 @@ function parseJson(text, path) {
   }
 }
 
+function apiCallSucceeded(payload) {
+  const code = payload?.code;
+  return code === undefined || Number(code) === 0;
+}
+
 function sha1(text) {
   return createHash('sha1').update(text).digest('hex');
 }
 
+function sha256(text) {
+  return createHash('sha256').update(text).digest('hex');
+}
+
+function hashPassword({
+  password,
+  authKey,
+  nonce,
+  useSha256
+}) {
+  const hash = useSha256 ? sha256 : sha1;
+  return hash(nonce + hash(password + authKey));
+}
+
 function randomDeviceId() {
-  return randomBytes(6).toString('hex');
+  return randomBytes(6).toString('hex').match(/../g).join(':');
 }
 
 function isAuthFailure(payload) {

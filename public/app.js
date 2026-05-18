@@ -7,14 +7,21 @@ const state = {
   summary: null,
   series: [],
   usage: null,
+  seriesBucket: 0,
+  hasBand: false,
   refreshTimer: null,
   chartGeometry: null,
-  hoverIndex: null
+  hoverIndex: null,
+  drag: null,
+  prevRanges: [],
+  lang: 'en'
 };
 
 const els = {
   routerName: document.querySelector('#routerName'),
   collectorStatus: document.querySelector('#collectorStatus'),
+  langToggle: document.querySelector('#langToggle'),
+  themeSelect: document.querySelector('#themeSelect'),
   refreshButton: document.querySelector('#refreshButton'),
   wanDown: document.querySelector('#wanDown'),
   wanUp: document.querySelector('#wanUp'),
@@ -25,6 +32,8 @@ const els = {
   clientTotal: document.querySelector('#clientTotal'),
   clientSearch: document.querySelector('#clientSearch'),
   clientList: document.querySelector('#clientList'),
+  sidePanel: document.querySelector('.side-panel'),
+  chartPanel: document.querySelector('.chart-panel'),
   chartTitle: document.querySelector('#chartTitle'),
   chartSubtitle: document.querySelector('#chartSubtitle'),
   rangeControl: document.querySelector('#rangeControl'),
@@ -32,9 +41,11 @@ const els = {
   customFrom: document.querySelector('#customFrom'),
   customTo: document.querySelector('#customTo'),
   applyCustomRange: document.querySelector('#applyCustomRange'),
+  clientMetricToggle: document.querySelector('#clientMetricToggle'),
   chart: document.querySelector('#trafficChart'),
   emptyChart: document.querySelector('#emptyChart'),
   chartTooltip: document.querySelector('#chartTooltip'),
+  zoomOutButton: document.querySelector('#zoomOutButton'),
   bucketInfo: document.querySelector('#bucketInfo'),
   meshStatus: document.querySelector('#meshStatus'),
   meshList: document.querySelector('#meshList'),
@@ -49,10 +60,134 @@ const els = {
 };
 
 restoreRangePreference();
+restoreClientMetricPreference();
+restoreLanguagePreference();
+restoreThemePreference();
+
+const translations = {
+  en: {
+    accumulated: 'Accumulated',
+    accumulatedDown: 'Accumulated Down',
+    accumulatedUp: 'Accumulated Up',
+    allRouterTraffic: 'All router traffic',
+    apply: 'Apply',
+    bands: 'bands',
+    bucket: 'Bucket',
+    clients: 'Clients',
+    collectNow: 'Collect now',
+    collecting: 'Collecting',
+    connecting: 'Connecting',
+    down: 'Down',
+    downstreamUpstream: 'Downstream and upstream throughput',
+    endTime: 'End time',
+    error: 'Error',
+    filterClients: 'Filter clients',
+    latest: 'Latest',
+    live: 'Live',
+    memory: 'Memory',
+    mesh: 'Mesh',
+    noDownloadData: 'No download data',
+    noIp: 'no ip',
+    noPassword: 'No password',
+    noTopologySample: 'No topology sample yet',
+    noUploadData: 'No upload data',
+    noWifiSample: 'No Wi-Fi sample yet',
+    nodes: 'nodes',
+    offline: 'Offline',
+    online: 'Online',
+    root: 'root',
+    startTime: 'Start time',
+    timeRange: 'Time range',
+    total: 'Total',
+    traffic: 'Traffic',
+    trafficChart: 'Traffic chart',
+    upload: 'Upload',
+    up: 'Up',
+    uptime: 'Uptime',
+    wanDown: 'WAN Down',
+    wanAggregate: 'WAN aggregate',
+    wanTraffic: 'WAN Traffic',
+    wanUp: 'WAN Up',
+    zoomOut: '↩ Zoom out',
+    waitingSamples: 'Waiting for traffic samples',
+    detailDataCleaned: 'Detail data not available — raw samples are kept for {days} days (MIROUTER_RETENTION_DET_DAYS)',
+    notEnoughData: 'Not enough data: {current} / {required} points',
+    wifi: 'Wi-Fi',
+    xiaomiRouter: 'Xiaomi Router'
+  },
+  zh: {
+    accumulated: '累计',
+    accumulatedDown: '累计下载',
+    accumulatedUp: '累计上传',
+    allRouterTraffic: '全部路由流量',
+    apply: '应用',
+    bands: '频段',
+    bucket: '粒度',
+    clients: '客户端',
+    collectNow: '立即采集',
+    collecting: '采集中',
+    connecting: '连接中',
+    down: '下载',
+    downstreamUpstream: '下载与上传吞吐',
+    endTime: '结束时间',
+    error: '错误',
+    filterClients: '筛选客户端',
+    latest: '实时',
+    live: '在线',
+    memory: '内存',
+    mesh: 'Mesh',
+    noDownloadData: '暂无下载数据',
+    noIp: '无 IP',
+    noPassword: '缺少密码',
+    noTopologySample: '暂无拓扑样本',
+    noUploadData: '暂无上传数据',
+    noWifiSample: '暂无 Wi-Fi 样本',
+    nodes: '节点',
+    offline: '离线',
+    online: '在线',
+    root: '主节点',
+    startTime: '开始时间',
+    timeRange: '时间范围',
+    total: '总计',
+    traffic: '流量',
+    trafficChart: '流量图表',
+    upload: '上传',
+    up: '上传',
+    uptime: '运行时长',
+    wanDown: 'WAN 下载',
+    wanAggregate: 'WAN 汇总',
+    wanTraffic: 'WAN 流量',
+    wanUp: 'WAN 上传',
+    zoomOut: '↩ 缩小',
+    waitingSamples: '等待流量样本',
+    detailDataCleaned: '详细数据不可用 — 原始样本保留 {days} 天（MIROUTER_RETENTION_DET_DAYS）',
+    notEnoughData: '数据不足：{current} / {required} 个数据点',
+    wifi: 'Wi-Fi',
+    xiaomiRouter: '小米路由器'
+  }
+};
+const themeNames = {
+  en: {
+    'light-warm': 'Light Warm',
+    'light-sage': 'Light Sage',
+    'light-paper': 'Light Paper',
+    'dark-ember': 'Dark Ember',
+    'dark-forest': 'Dark Forest',
+    'dark-graphite': 'Dark Graphite'
+  },
+  zh: {
+    'light-warm': '浅色暖调',
+    'light-sage': '浅色鼠尾草',
+    'light-paper': '浅色纸白',
+    'dark-ember': '深色余烬',
+    'dark-forest': '深色森林',
+    'dark-graphite': '深色石墨'
+  }
+};
 
 const pieColors = [
-  '#b85c38',
-  '#3f7f7a',
+  'var(--down)',
+  'var(--up)',
   '#d58a64',
   '#6f7f4f',
   '#9d6a89',
@@ -62,18 +197,42 @@ const pieColors = [
   '#6f8f8a',
   '#c7b29f'
 ];
+const minChartRateBytes = 10 * 1024;
+const maxChartPoints = 1500;
+const MIN_RANGE_POINTS = { '1h': 30, '6h': 30, '1d': 12, '30d': 15 };
+
+applyLanguage();
+applyTheme();
 
 function formatRate(value) {
-  const bps = Number(value) || 0;
-  const units = ['bps', 'Kbps', 'Mbps', 'Gbps'];
-  let scaled = bps * 8;
-  let unit = 0;
-  while (scaled >= 1000 && unit < units.length - 1) {
-    scaled /= 1000;
-    unit += 1;
+  return `${formatBytes(value)}/s`;
+}
+
+function rateAxisScale(maxValue) {
+  const units = [
+    { label: 'KB/s', divisor: 1024 },
+    { label: 'MB/s', divisor: 1024 * 1024 },
+    { label: 'GB/s', divisor: 1024 * 1024 * 1024 }
+  ];
+  let unit = units[0];
+  for (const candidate of units) {
+    if (maxValue >= candidate.divisor) unit = candidate;
   }
-  const digits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2;
-  return `${scaled.toFixed(digits)} ${units[unit]}`;
+  return unit;
+}
+
+function bytesAxisScale(maxValue) {
+  const units = [
+    { label: 'KB', divisor: 1024 },
+    { label: 'MB', divisor: 1024 * 1024 },
+    { label: 'GB', divisor: 1024 * 1024 * 1024 },
+    { label: 'TB', divisor: 1024 * 1024 * 1024 * 1024 }
+  ];
+  let unit = units[0];
+  for (const candidate of units) {
+    if (maxValue >= candidate.divisor) unit = candidate;
+  }
+  return unit;
 }
 
 function formatDuration(seconds) {
@@ -86,8 +245,8 @@ function formatDuration(seconds) {
 }
 
 function formatBytes(value) {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let scaled = Math.max(0, Number(value) || 0);
+  const units = ['KB', 'MB', 'GB'];
+  let scaled = Math.max(0, Number(value) || 0) / 1024;
   let unit = 0;
   while (scaled >= 1024 && unit < units.length - 1) {
     scaled /= 1024;
@@ -95,6 +254,79 @@ function formatBytes(value) {
   }
   const digits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2;
   return `${scaled.toFixed(digits)} ${units[unit]}`;
+}
+
+function usageByMac() {
+  return new Map((state.usage?.clients ?? []).map((client) => [client.mac, client]));
+}
+
+function restoreClientMetricPreference() {
+  state.clientMetric = localStorage.getItem('mirouter.clientMetric') === 'latest' ? 'latest' : 'accumulated';
+}
+
+function saveClientMetricPreference() {
+  localStorage.setItem('mirouter.clientMetric', state.clientMetric);
+}
+
+function restoreLanguagePreference() {
+  const saved = localStorage.getItem('mirouter.lang');
+  state.lang = saved === 'zh' ? 'zh' : 'en';
+}
+
+function saveLanguagePreference() {
+  localStorage.setItem('mirouter.lang', state.lang);
+}
+
+function restoreThemePreference() {
+  const allowedThemes = new Set([
+    'light-warm',
+    'light-sage',
+    'light-paper',
+    'dark-ember',
+    'dark-forest',
+    'dark-graphite'
+  ]);
+  const saved = localStorage.getItem('mirouter.theme');
+  state.theme = allowedThemes.has(saved) ? saved : 'light-warm';
+}
+
+function saveThemePreference() {
+  localStorage.setItem('mirouter.theme', state.theme);
+}
+
+function t(key) {
+  return translations[state.lang]?.[key] ?? translations.en[key] ?? key;
+}
+
+function applyLanguage() {
+  document.documentElement.lang = state.lang === 'zh' ? 'zh-CN' : 'en';
+  els.langToggle.textContent = state.lang === 'zh' ? 'EN' : '中文';
+  els.langToggle.setAttribute('aria-label', state.lang === 'zh' ? 'Switch to English' : '切换到中文');
+  els.refreshButton.title = t('collectNow');
+  els.refreshButton.setAttribute('aria-label', t('collectNow'));
+  els.chart.setAttribute('aria-label', t('trafficChart'));
+  updateThemeLabels();
+  document.querySelectorAll('[data-i18n]').forEach((item) => {
+    item.textContent = t(item.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach((item) => {
+    item.placeholder = t(item.dataset.i18nPlaceholder);
+  });
+  document.querySelectorAll('[data-i18n-aria-label]').forEach((item) => {
+    item.setAttribute('aria-label', t(item.dataset.i18nAriaLabel));
+  });
+  syncRangeButtonStates();
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = state.theme;
+  els.themeSelect.value = state.theme;
+}
+
+function updateThemeLabels() {
+  els.themeSelect.querySelectorAll('option').forEach((option) => {
+    option.textContent = themeNames[state.lang]?.[option.value] ?? themeNames.en[option.value] ?? option.textContent;
+  });
 }
 
 function escapeHtml(text) {
@@ -113,7 +345,24 @@ async function getJson(path, options) {
   return response.json();
 }
 
+function isFixedRange() {
+  return state.range === 'custom';
+}
+
+function effectiveClientMetric() {
+  return isFixedRange() ? 'accumulated' : state.clientMetric;
+}
+
 async function loadAll() {
+  const firstLoad = state.series.length === 0;
+
+  if (isFixedRange() && !firstLoad) {
+    // In fixed range after initial load: only refresh live stat cards, leave client list and chart frozen.
+    state.summary = await getJson('/api/summary');
+    renderSummary();
+    return;
+  }
+
   const [summary, clients] = await Promise.all([
     getJson('/api/summary'),
     getJson('/api/clients')
@@ -135,12 +384,16 @@ async function loadSeries() {
     getJson(`/api/usage?${usageParams}`)
   ]);
   state.series = seriesPayload.points ?? [];
+  state.seriesBucket = Number(seriesPayload.bucket) || 0;
+  state.hasBand = seriesPayload.hasBand ?? false;
   state.usage = usagePayload;
   state.hoverIndex = null;
-  els.bucketInfo.textContent = seriesPayload.bucket ? `Bucket ${formatDuration(seriesPayload.bucket)}` : '';
+  els.bucketInfo.textContent = seriesPayload.bucket ? `${t('bucket')} ${formatDuration(seriesPayload.bucket)}` : '';
   hideChartTooltip();
+  renderClients();
   renderChart();
   renderUsageCharts();
+  syncWorkspaceHeights();
 }
 
 function buildRangeParams() {
@@ -153,7 +406,23 @@ function buildRangeParams() {
 }
 
 function maxPointsForRange(range) {
-  const pollSeconds = Math.max(5, Number(state.summary?.settings?.pollSeconds) || 30);
+  const pollSeconds = Math.max(1, Number(state.summary?.settings?.pollSeconds) || 30);
+  const presets = { '15m': 900, '1h': 3600, '6h': 21600, '1d': 86400, '30d': 2592000 };
+  const seconds = range === 'custom'
+    ? Math.max(1, (state.customTo || 0) - (state.customFrom || 0))
+    : presets[range] ?? 900;
+
+  // Mirror the tier map in db.js seriesTier()
+  if (seconds < 1800) return Math.min(maxChartPoints, Math.ceil(seconds / pollSeconds)); // raw
+  if (seconds < 86400) return Math.min(maxChartPoints, Math.ceil(seconds / 60));         // _1m
+  if (seconds < 30 * 86400) return Math.min(maxChartPoints, Math.ceil(seconds / 3600)); // _1h
+  return Math.min(maxChartPoints, Math.ceil(seconds / 86400));                           // _1d
+}
+
+function currentRangeSeconds() {
+  if (state.range === 'custom' && state.customFrom && state.customTo) {
+    return Math.max(1, state.customTo - state.customFrom);
+  }
   const ranges = {
     '15m': 900,
     '1h': 3600,
@@ -161,15 +430,11 @@ function maxPointsForRange(range) {
     '1d': 86400,
     '30d': 2592000
   };
-  const seconds = range === 'custom'
-    ? Math.max(900, (state.customTo || 0) - (state.customFrom || 0))
-    : ranges[range] ?? ranges['15m'];
+  return ranges[state.range] ?? ranges['15m'];
+}
 
-  if (seconds <= 86400) {
-    return Math.ceil(seconds / pollSeconds);
-  }
-  if (range === '30d') return 8640;
-  return Math.min(10080, Math.ceil(seconds / 300));
+function useDailyStackedBars() {
+  return currentRangeSeconds() >= 30 * 86400;
 }
 
 function restoreRangePreference() {
@@ -205,6 +470,25 @@ function saveRangePreference() {
   }));
 }
 
+function syncRangeButtonStates() {
+  const rangePoints = state.summary?.rangePoints ?? {};
+  els.rangeControl.querySelectorAll('button[data-range]').forEach((btn) => {
+    const range = btn.dataset.range;
+    const required = MIN_RANGE_POINTS[range];
+    if (!required) return;
+    const current = Number(rangePoints[range]) || 0;
+    const ok = current >= required;
+    btn.disabled = !ok;
+    btn.title = ok ? '' : t('notEnoughData')
+      .replace('{current}', current)
+      .replace('{required}', required);
+  });
+}
+
+function syncZoomOutButton() {
+  els.zoomOutButton.hidden = state.prevRanges.length === 0;
+}
+
 function syncRangeControls() {
   els.rangeControl.querySelectorAll('button').forEach((item) => {
     item.classList.toggle('active', item.dataset.range === state.range);
@@ -229,19 +513,19 @@ function renderSummary() {
   const { latest, lastSnapshot, collector, settings } = state.summary;
   const hardware = lastSnapshot?.router ?? {};
   els.routerName.textContent = hardware.displayName || hardware.DisplayRomVer
-    ? `${hardware.displayName || 'Xiaomi Router'} · ${hardware.platform || ''}`.trim()
-    : 'Xiaomi Router';
+    ? `${hardware.displayName || t('xiaomiRouter')} · ${hardware.platform || ''}`.trim()
+    : t('xiaomiRouter');
 
   els.collectorStatus.classList.remove('ok', 'error');
   if (!settings.hasToken && !settings.canRefreshToken) {
-    els.collectorStatus.textContent = 'No token';
+    els.collectorStatus.textContent = t('noPassword');
     els.collectorStatus.classList.add('error');
   } else if (collector.lastError) {
-    els.collectorStatus.textContent = 'Offline';
+    els.collectorStatus.textContent = t('offline');
     els.collectorStatus.classList.add('error');
     els.collectorStatus.title = collector.lastError;
   } else {
-    els.collectorStatus.textContent = 'Live';
+    els.collectorStatus.textContent = t('live');
     els.collectorStatus.classList.add('ok');
     els.collectorStatus.title = '';
   }
@@ -255,11 +539,12 @@ function renderSummary() {
 
   renderMesh(lastSnapshot?.topo);
   renderWifi(lastSnapshot?.wifi);
+  syncRangeButtonStates();
   scheduleRefresh(settings.pollSeconds);
 }
 
 function scheduleRefresh(pollSeconds) {
-  const refreshMs = Math.max(5000, (Number(pollSeconds) || 30) * 1000);
+  const refreshMs = Math.max(1000, (Number(pollSeconds) || 30) * 1000);
   if (state.refreshTimer?.refreshMs === refreshMs) return;
   if (state.refreshTimer) clearInterval(state.refreshTimer.id);
   state.refreshTimer = {
@@ -272,39 +557,120 @@ function scheduleRefresh(pollSeconds) {
 
 function renderClients() {
   const query = els.clientSearch.value.trim().toLowerCase();
+  const usage = usageByMac();
   const clients = state.clients.filter((client) => {
     const haystack = `${client.name} ${client.oname} ${client.ip} ${client.mac}`.toLowerCase();
     return haystack.includes(query);
   });
+  const totalDown = Number(state.usage?.down?.total) || 0;
+  const totalUp = Number(state.usage?.up?.total) || 0;
+  const showAccumulated = effectiveClientMetric() !== 'latest';
+  els.clientMetricToggle.disabled = isFixedRange();
+  const aggregateVolume = showAccumulated
+    ? totalDown + totalUp
+    : Number(state.summary?.latest?.wan_down_bps || 0) + Number(state.summary?.latest?.wan_up_bps || 0);
+  const clientVolume = (client) => {
+    const totals = usage.get(client.mac);
+    return showAccumulated
+      ? Number(totals?.down_bytes || 0) + Number(totals?.up_bytes || 0)
+      : Number(client.down_bps || 0) + Number(client.up_bps || 0);
+  };
+  const maxVolume = Math.max(
+    1,
+    aggregateVolume,
+    ...clients.map(clientVolume)
+  );
 
-  els.clientTotal.textContent = String(state.clients.length);
+  els.clientTotal.textContent = `${state.clients.length} ${t('total')}`;
+  els.clientMetricToggle.textContent = showAccumulated ? t('accumulated') : t('latest');
+  els.clientMetricToggle.setAttribute('aria-pressed', String(showAccumulated));
   const allActive = state.selectedMac === '' ? ' active' : '';
   els.clientList.innerHTML = `
     <button class="client-row${allActive}" data-mac="">
-      <span>
-        <span class="client-name">WAN aggregate</span>
-        <span class="client-meta">All router traffic</span>
+        <span class="client-text">
+          <span class="client-name">${escapeHtml(t('wanAggregate'))}</span>
+          <span class="client-meta">${escapeHtml(t('allRouterTraffic'))}</span>
       </span>
-      <span class="client-rate">${formatRate(state.summary?.latest?.wan_down_bps || 0)}</span>
+      <span class="client-traffic">
+        ${trafficLine('up', state.summary?.latest?.wan_up_bps || 0, totalUp, showAccumulated)}
+        ${trafficLine('down', state.summary?.latest?.wan_down_bps || 0, totalDown, showAccumulated)}
+      </span>
+      ${volumeBar(aggregateVolume, maxVolume, showAccumulated)}
     </button>
-    ${clients.map((client) => `
+    ${clients.map((client) => {
+      const totals = usage.get(client.mac);
+      return `
       <button class="client-row${client.mac === state.selectedMac ? ' active' : ''}" data-mac="${escapeHtml(client.mac)}">
-        <span>
+        <span class="client-text">
           <span class="client-name">${escapeHtml(client.name || client.oname || client.mac)}</span>
-          <span class="client-meta">${escapeHtml(client.ip || 'no ip')} · ${escapeHtml(client.mac)}</span>
+          <span class="client-meta">${escapeHtml(client.ip || t('noIp'))} · ${escapeHtml(client.mac)}</span>
         </span>
-        <span class="client-rate">${formatRate(client.down_bps)}<br>${formatRate(client.up_bps)}</span>
+        <span class="client-traffic">
+          ${trafficLine('up', client.up_bps, totals?.up_bytes || 0, showAccumulated)}
+          ${trafficLine('down', client.down_bps, totals?.down_bytes || 0, showAccumulated)}
+        </span>
+        ${volumeBar(clientVolume(client), maxVolume, showAccumulated)}
       </button>
-    `).join('')}
+    `;
+    }).join('')}
+  `;
+  syncWorkspaceHeights();
+}
+
+function syncWorkspaceHeights() {
+  els.sidePanel.style.height = '';
+  els.sidePanel.style.maxHeight = '';
+  if (window.matchMedia('(max-width: 1100px)').matches) return;
+
+  requestAnimationFrame(() => {
+    const chartHeight = els.chartPanel.getBoundingClientRect().height;
+    if (chartHeight <= 0) return;
+    els.sidePanel.style.height = `${chartHeight}px`;
+    els.sidePanel.style.maxHeight = `${chartHeight}px`;
+  });
+}
+
+function volumeBar(value, maxValue, showAccumulated) {
+  const segmentCount = 16;
+  const activeSegments = Math.max(0, Math.min(segmentCount, Math.round((Number(value) || 0) / Math.max(1, maxValue) * segmentCount)));
+  const label = showAccumulated ? formatBytes(value) : formatRate(value);
+  return `
+    <span class="volume-bar" aria-label="${escapeHtml(t('traffic'))} ${escapeHtml(label)}">
+      ${Array.from({ length: segmentCount }, (_, index) => `
+        <span class="${index < activeSegments ? 'active' : ''}"></span>
+      `).join('')}
+    </span>
+  `;
+}
+
+function cssColor(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function pieColor(index) {
+  const color = pieColors[index % pieColors.length];
+  if (color.startsWith('var(')) {
+    return cssColor(color.slice(4, -1));
+  }
+  return color;
+}
+
+function trafficLine(direction, rate, total, showAccumulated) {
+  const isUp = direction === 'up';
+  return `
+    <span class="traffic-line ${direction}">
+      <span class="traffic-value">${escapeHtml(showAccumulated ? formatBytes(total) : formatRate(rate))}</span>
+      <span class="traffic-direction" aria-label="${isUp ? t('upload') : t('down')}">${isUp ? '↑' : '↓'}</span>
+    </span>
   `;
 }
 
 function renderMesh(topo) {
   const graph = topo?.graph;
   const leafs = graph?.leafs ?? [];
-  els.meshStatus.textContent = graph ? `${leafs.length + 1} nodes` : '--';
+  els.meshStatus.textContent = graph ? `${leafs.length + 1} ${t('nodes')}` : '--';
   if (!graph) {
-    els.meshList.innerHTML = '<div>No topology sample yet</div>';
+    els.meshList.innerHTML = `<div>${escapeHtml(t('noTopologySample'))}</div>`;
     return;
   }
   const nodes = [
@@ -317,16 +683,16 @@ function renderMesh(topo) {
         <strong>${escapeHtml(node.locale || node.name || node.ip)}</strong>
         <span>${escapeHtml(node.hardware || '')} · ${escapeHtml(node.ip || '')}</span>
       </div>
-      <span>${escapeHtml(node.link_type || 'root')} · ${escapeHtml(node.onlines ?? 0)} online</span>
+      <span>${escapeHtml(node.link_type || t('root'))} · ${escapeHtml(node.onlines ?? 0)} ${escapeHtml(t('online'))}</span>
     </div>
   `).join('');
 }
 
 function renderWifi(wifi) {
   const bands = wifi?.info ?? [];
-  els.wifiStatus.textContent = bands.length ? `${bands.length} bands` : '--';
+  els.wifiStatus.textContent = bands.length ? `${bands.length} ${t('bands')}` : '--';
   if (!bands.length) {
-    els.wifiList.innerHTML = '<div>No Wi-Fi sample yet</div>';
+    els.wifiList.innerHTML = `<div>${escapeHtml(t('noWifiSample'))}</div>`;
     return;
   }
   els.wifiList.innerHTML = bands.map((band) => `
@@ -340,15 +706,34 @@ function renderWifi(wifi) {
   `).join('');
 }
 
+function emptyChartMessage() {
+  const span = currentRangeSeconds();
+  const tier = span < 1800 ? 'raw' : span < 86400 ? '1m' : span < 30 * 86400 ? '1h' : '1d';
+  if (isFixedRange() && (tier === 'raw' || tier === '1m')) {
+    const retDays = Number(state.summary?.settings?.retentionDetDays) || 7;
+    const now = Math.floor(Date.now() / 1000);
+    if (state.customTo < now - retDays * 86400) {
+      return t('detailDataCleaned').replace('{days}', retDays);
+    }
+  }
+  return t('waitingSamples');
+}
+
 function renderChart() {
   const selected = state.clients.find((client) => client.mac === state.selectedMac);
-  els.chartTitle.textContent = selected ? selected.name || selected.mac : 'WAN Traffic';
+  els.chartTitle.textContent = selected ? selected.name || selected.mac : t('wanTraffic');
   els.chartSubtitle.textContent = selected
-    ? `${selected.ip || 'no ip'} · ${selected.mac}`
-    : 'Downstream and upstream throughput';
+    ? `${selected.ip || t('noIp')} · ${selected.mac}`
+    : t('downstreamUpstream');
 
   const points = state.series;
-  els.emptyChart.classList.toggle('show', points.length < 2);
+  const dailyBars = useDailyStackedBars();
+  const minRequired = dailyBars ? 1 : 2;
+  const isEmpty = points.length < minRequired;
+  els.emptyChart.classList.toggle('show', isEmpty);
+  if (isEmpty) {
+    els.emptyChart.textContent = emptyChartMessage();
+  }
 
   const canvas = els.chart;
   const rect = canvas.getBoundingClientRect();
@@ -359,25 +744,40 @@ function renderChart() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, rect.width, rect.height);
 
-  const pad = { top: 12, right: 18, bottom: 30, left: 58 };
+  const pad = { top: 28, right: 18, bottom: 30, left: 60 };
   const width = rect.width - pad.left - pad.right;
   const height = rect.height - pad.top - pad.bottom;
   state.chartGeometry = null;
   drawGrid(ctx, rect, pad, width, height);
-  if (points.length < 2) return;
-
-  const maxY = Math.max(1, ...points.flatMap((p) => [Number(p.down_bps) || 0, Number(p.up_bps) || 0]));
+  if (isEmpty) return;
+  const maxY = dailyBars
+    ? Math.max(1024, ...points.map((p) => (Number(p.down_bytes) || 0) + (Number(p.up_bytes) || 0)))
+    : Math.max(minChartRateBytes, ...points.flatMap((p) => [
+        Number(p.down_bps) || 0, Number(p.up_bps) || 0,
+        ...(state.hasBand ? [Number(p.max_down_bps) || 0, Number(p.max_up_bps) || 0] : [])
+      ]));
   const minT = points[0].ts;
   const maxT = points[points.length - 1].ts;
 
   const x = (ts) => pad.left + ((ts - minT) / Math.max(1, maxT - minT)) * width;
   const y = (value) => pad.top + height - ((Number(value) || 0) / maxY) * height;
-  state.chartGeometry = { pad, width, height, maxY, minT, maxT };
+  state.chartGeometry = { pad, width, height, maxY, minT, maxT, mode: dailyBars ? 'daily-bars' : 'line' };
 
-  drawAxisLabels(ctx, pad, width, height, maxY, minT, maxT);
-  drawLine(ctx, points, x, y, 'down_bps', '#b85c38');
-  drawLine(ctx, points, x, y, 'up_bps', '#3f7f7a');
+  drawAxisLabels(ctx, pad, width, height, maxY, minT, maxT, dailyBars ? 'bytes' : 'rate');
+  if (dailyBars) {
+    drawStackedBars(ctx, points, x, y, width);
+    drawBarHover(ctx, points, x, y, pad, height);
+    drawZoomSelection(ctx, pad, height);
+    return;
+  }
+  if (state.hasBand) {
+    drawBand(ctx, points, x, y, 'min_down_bps', 'max_down_bps', cssColor('--down'));
+    drawBand(ctx, points, x, y, 'min_up_bps', 'max_up_bps', cssColor('--up'));
+  }
+  drawLine(ctx, points, x, y, 'down_bps', cssColor('--down'));
+  drawLine(ctx, points, x, y, 'up_bps', cssColor('--up'));
   drawHover(ctx, points, x, y, pad, height);
+  drawZoomSelection(ctx, pad, height);
 }
 
 function renderUsageCharts() {
@@ -386,14 +786,14 @@ function renderUsageCharts() {
     legend: els.usageDownLegend,
     total: els.usageDownTotal,
     data: state.usage?.down,
-    emptyLabel: 'No download data'
+    emptyLabel: t('noDownloadData')
   });
   renderPie({
     canvas: els.usageUpChart,
     legend: els.usageUpLegend,
     total: els.usageUpTotal,
     data: state.usage?.up,
-    emptyLabel: 'No upload data'
+    emptyLabel: t('noUploadData')
   });
 }
 
@@ -406,8 +806,13 @@ function renderPie({ canvas, legend, total, data, emptyLabel }) {
         const percent = sum > 0 ? (item.bytes / sum) * 100 : 0;
         return `
           <div class="pie-legend-row" title="${escapeHtml(item.name)}">
-            <span class="pie-swatch" style="background:${pieColors[index % pieColors.length]}"></span>
-            <span class="pie-name">${escapeHtml(item.name)}</span>
+            <span class="pie-swatch" style="background:${pieColor(index)}"></span>
+            <span class="pie-name-wrap">
+              <span class="pie-name">${escapeHtml(item.name)}</span>
+              <span class="pie-meter">
+                <span style="width:${Math.min(100, Math.max(0, percent))}%; background:${pieColor(index)}"></span>
+              </span>
+            </span>
             <span class="pie-value">${escapeHtml(formatBytes(item.bytes))} · ${percent.toFixed(percent >= 10 ? 0 : 1)}%</span>
           </div>
         `;
@@ -427,11 +832,11 @@ function renderPie({ canvas, legend, total, data, emptyLabel }) {
   const radius = Math.max(10, Math.min(rect.width, rect.height) / 2 - 5);
   ctx.lineWidth = 1;
   if (!items.length || sum <= 0) {
-    ctx.fillStyle = '#f1e4d6';
+    ctx.fillStyle = cssColor('--surface-2');
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#fffaf3';
+    ctx.fillStyle = cssColor('--control');
     ctx.beginPath();
     ctx.arc(cx, cy, radius * 0.58, 0, Math.PI * 2);
     ctx.fill();
@@ -441,7 +846,7 @@ function renderPie({ canvas, legend, total, data, emptyLabel }) {
   let start = -Math.PI / 2;
   items.forEach((item, index) => {
     const angle = (item.bytes / sum) * Math.PI * 2;
-    ctx.fillStyle = pieColors[index % pieColors.length];
+    ctx.fillStyle = pieColor(index);
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.arc(cx, cy, radius, start, start + angle);
@@ -450,11 +855,11 @@ function renderPie({ canvas, legend, total, data, emptyLabel }) {
     start += angle;
   });
 
-  ctx.fillStyle = '#fffaf3';
+  ctx.fillStyle = cssColor('--control');
   ctx.beginPath();
   ctx.arc(cx, cy, radius * 0.58, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#2d241d';
+  ctx.fillStyle = cssColor('--ink');
   ctx.font = '700 13px Inter, system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -462,7 +867,7 @@ function renderPie({ canvas, legend, total, data, emptyLabel }) {
 }
 
 function drawGrid(ctx, rect, pad, width, height) {
-  ctx.strokeStyle = '#ecdccd';
+  ctx.strokeStyle = cssColor('--grid');
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let i = 0; i <= 4; i += 1) {
@@ -471,33 +876,124 @@ function drawGrid(ctx, rect, pad, width, height) {
     ctx.lineTo(pad.left + width, y);
   }
   ctx.stroke();
-  ctx.strokeStyle = '#ddc9b6';
+  ctx.strokeStyle = cssColor('--line-strong');
   ctx.strokeRect(pad.left, pad.top, width, height);
 }
 
-function drawAxisLabels(ctx, pad, width, height, maxY, minT, maxT) {
+function drawAxisLabels(ctx, pad, width, height, maxY, minT, maxT, mode = 'rate') {
+  const scale = mode === 'bytes' ? bytesAxisScale(maxY) : rateAxisScale(maxY);
   ctx.fillStyle = '#7d7065';
   ctx.font = '12px Inter, system-ui, sans-serif';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   for (let i = 0; i <= 4; i += 1) {
     const value = maxY - (maxY / 4) * i;
-    ctx.fillText(formatRate(value), pad.left - 8, pad.top + (height / 4) * i);
+    ctx.fillText(String(Math.round(value / scale.divisor)), pad.left - 8, pad.top + (height / 4) * i);
   }
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(scale.label, pad.left, 8);
   ctx.textBaseline = 'top';
   ctx.fillText(formatTime(minT), pad.left + 40, pad.top + height + 10);
   ctx.textAlign = 'right';
   ctx.fillText(formatTime(maxT), pad.left + width, pad.top + height + 10);
 }
 
+function drawStackedBars(ctx, points, x, y, width) {
+  const slot = width / Math.max(1, points.length);
+  const barWidth = Math.max(2, Math.min(18, slot * 0.7));
+  points.forEach((point) => {
+    const down = Number(point.down_bytes) || 0;
+    const up = Number(point.up_bytes) || 0;
+    const total = down + up;
+    if (total <= 0) return;
+    const cx = x(point.ts);
+    const left = cx - barWidth / 2;
+    const baseY = y(0);
+    const downY = y(down);
+    const totalY = y(total);
+
+    ctx.fillStyle = cssColor('--down');
+    ctx.fillRect(left, downY, barWidth, baseY - downY);
+    ctx.fillStyle = cssColor('--up');
+    ctx.fillRect(left, totalY, barWidth, downY - totalY);
+  });
+}
+
+function drawBarHover(ctx, points, x, y, pad, height) {
+  if (state.hoverIndex === null || !points[state.hoverIndex]) return;
+  const point = points[state.hoverIndex];
+  const total = (Number(point.down_bytes) || 0) + (Number(point.up_bytes) || 0);
+  const px = x(point.ts);
+  const topY = y(total);
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(45, 36, 29, 0.3)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(px, pad.top);
+  ctx.lineTo(px, pad.top + height);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  drawPoint(ctx, px, topY, cssColor('--accent-2'));
+  ctx.restore();
+}
+
+function drawBand(ctx, points, x, y, minKey, maxKey, color) {
+  if (points.length < 2) return;
+  ctx.save();
+  ctx.globalAlpha = 0.12;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x(points[0].ts), y(Number(points[0][maxKey]) || 0));
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(x(points[i].ts), y(Number(points[i][maxKey]) || 0));
+  }
+  for (let i = points.length - 1; i >= 0; i--) {
+    ctx.lineTo(x(points[i].ts), y(Number(points[i][minKey]) || 0));
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawZoomSelection(ctx, pad, height) {
+  if (!state.drag || state.drag.currentX === undefined) return;
+  const left = Math.min(state.drag.startX, state.drag.currentX);
+  const right = Math.max(state.drag.startX, state.drag.currentX);
+  if (right - left < 2) return;
+  ctx.save();
+  ctx.fillStyle = cssColor('--accent');
+  ctx.globalAlpha = 0.08;
+  ctx.fillRect(left, pad.top, right - left, height);
+  ctx.globalAlpha = 0.5;
+  ctx.strokeStyle = cssColor('--accent');
+  ctx.lineWidth = 1;
+  ctx.strokeRect(left, pad.top, right - left, height);
+  ctx.restore();
+}
+
 function drawLine(ctx, points, x, y, key, color) {
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
   ctx.beginPath();
+  let hasStarted = false;
+  const maxGapSeconds = Math.max(1, state.seriesBucket || 1) * 2;
   points.forEach((point, index) => {
+    if (point[key] === null || point[key] === undefined) {
+      hasStarted = false;
+      return;
+    }
+    if (index > 0 && point.ts - points[index - 1].ts > maxGapSeconds) {
+      hasStarted = false;
+    }
     const px = x(point.ts);
     const py = y(point[key]);
-    if (index === 0) ctx.moveTo(px, py);
+    if (!hasStarted) {
+      ctx.moveTo(px, py);
+      hasStarted = true;
+    }
     else ctx.lineTo(px, py);
   });
   ctx.stroke();
@@ -520,13 +1016,13 @@ function drawHover(ctx, points, x, y, pad, height) {
   ctx.lineTo(px, pad.top + height);
   ctx.stroke();
   ctx.setLineDash([]);
-  drawPoint(ctx, px, downY, '#b85c38');
-  drawPoint(ctx, px, upY, '#3f7f7a');
+  drawPoint(ctx, px, downY, cssColor('--down'));
+  drawPoint(ctx, px, upY, cssColor('--up'));
   ctx.restore();
 }
 
 function drawPoint(ctx, x, y, color) {
-  ctx.fillStyle = '#fffdf9';
+  ctx.fillStyle = cssColor('--surface');
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -536,7 +1032,7 @@ function drawPoint(ctx, x, y, color) {
 }
 
 function formatTime(ts) {
-  return new Date(ts * 1000).toLocaleString([], {
+  return new Date(ts * 1000).toLocaleString(state.lang === 'zh' ? 'zh-CN' : 'en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -545,7 +1041,7 @@ function formatTime(ts) {
 }
 
 function formatTooltipTime(ts) {
-  return new Date(ts * 1000).toLocaleString([], {
+  return new Date(ts * 1000).toLocaleString(state.lang === 'zh' ? 'zh-CN' : 'en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -591,21 +1087,24 @@ function updateChartHover(event) {
 
 function showChartTooltip(point) {
   if (!point || !state.chartGeometry) return;
-  const { pad, width, height, maxY, minT, maxT } = state.chartGeometry;
+  const { pad, width, height, maxY, minT, maxT, mode } = state.chartGeometry;
   const x = pad.left + ((point.ts - minT) / Math.max(1, maxT - minT)) * width;
+  const dailyBars = mode === 'daily-bars';
+  const totalBytes = (Number(point.down_bytes) || 0) + (Number(point.up_bytes) || 0);
   const downY = pad.top + height - ((Number(point.down_bps) || 0) / maxY) * height;
   const upY = pad.top + height - ((Number(point.up_bps) || 0) / maxY) * height;
-  const y = Math.min(downY, upY);
+  const barY = pad.top + height - (totalBytes / maxY) * height;
+  const y = dailyBars ? barY : Math.min(downY, upY);
 
   els.chartTooltip.innerHTML = `
     <div class="tooltip-time">${escapeHtml(formatTooltipTime(point.ts))}</div>
     <div class="tooltip-row">
-      <span class="tooltip-label down">Down</span>
-      <span class="tooltip-value">${escapeHtml(formatRate(point.down_bps))}</span>
+      <span class="tooltip-label down">${escapeHtml(t('down'))}</span>
+      <span class="tooltip-value">${escapeHtml(dailyBars ? formatBytes(point.down_bytes) : formatRate(point.down_bps))}</span>
     </div>
     <div class="tooltip-row">
-      <span class="tooltip-label up">Up</span>
-      <span class="tooltip-value">${escapeHtml(formatRate(point.up_bps))}</span>
+      <span class="tooltip-label up">${escapeHtml(t('up'))}</span>
+      <span class="tooltip-value">${escapeHtml(dailyBars ? formatBytes(point.up_bytes) : formatRate(point.up_bps))}</span>
     </div>
   `;
   els.chartTooltip.classList.add('show');
@@ -634,8 +1133,11 @@ els.rangeControl.addEventListener('click', async (event) => {
     const now = Math.floor(Date.now() / 1000);
     state.customTo = state.customTo || now;
     state.customFrom = state.customFrom || state.customTo - 3600;
+  } else {
+    state.prevRanges = [];
   }
   syncRangeControls();
+  syncZoomOutButton();
   saveRangePreference();
   await loadSeries();
 });
@@ -647,10 +1149,12 @@ els.applyCustomRange.addEventListener('click', async () => {
     els.customTo.focus();
     return;
   }
+  state.prevRanges = [];
   state.range = 'custom';
   state.customFrom = from;
   state.customTo = to;
   syncRangeControls();
+  syncZoomOutButton();
   saveRangePreference();
   await loadSeries();
 });
@@ -674,14 +1178,97 @@ els.clientList.addEventListener('click', async (event) => {
 });
 
 els.clientSearch.addEventListener('input', renderClients);
+els.clientMetricToggle.addEventListener('click', () => {
+  state.clientMetric = state.clientMetric === 'latest' ? 'accumulated' : 'latest';
+  saveClientMetricPreference();
+  renderClients();
+});
+els.langToggle.addEventListener('click', () => {
+  state.lang = state.lang === 'zh' ? 'en' : 'zh';
+  saveLanguagePreference();
+  applyLanguage();
+  if (state.summary) renderSummary();
+  renderClients();
+  renderChart();
+  renderUsageCharts();
+  syncWorkspaceHeights();
+});
+els.themeSelect.addEventListener('change', () => {
+  state.theme = els.themeSelect.value;
+  saveThemePreference();
+  applyTheme();
+  renderChart();
+  renderUsageCharts();
+  syncWorkspaceHeights();
+});
 els.refreshButton.addEventListener('click', async () => {
-  els.collectorStatus.textContent = 'Collecting';
+  els.collectorStatus.textContent = t('collecting');
   await getJson('/api/collect', { method: 'POST' });
   await loadAll();
 });
 
-els.chart.addEventListener('mousemove', updateChartHover);
+els.chart.addEventListener('mousedown', (event) => {
+  if (!state.chartGeometry || state.series.length < 2) return;
+  const rect = els.chart.getBoundingClientRect();
+  const mouseX = event.clientX - rect.left;
+  const { pad, width, minT, maxT } = state.chartGeometry;
+  if (mouseX < pad.left || mouseX > pad.left + width) return;
+  const ts = minT + ((mouseX - pad.left) / width) * Math.max(1, maxT - minT);
+  state.drag = { startX: mouseX, startTs: ts, currentX: mouseX };
+  hideChartTooltip();
+  event.preventDefault();
+});
+
+els.chart.addEventListener('mousemove', (event) => {
+  if (state.drag) {
+    const rect = els.chart.getBoundingClientRect();
+    state.drag.currentX = event.clientX - rect.left;
+    renderChart();
+    return;
+  }
+  updateChartHover(event);
+});
+
+document.addEventListener('mouseup', (event) => {
+  if (!state.drag) return;
+  const { startX, startTs, currentX } = state.drag;
+  state.drag = null;
+  if (Math.abs(currentX - startX) < 10) {
+    renderChart();
+    return;
+  }
+  const { pad, width, minT, maxT } = state.chartGeometry;
+  const endTs = minT + ((currentX - pad.left) / width) * Math.max(1, maxT - minT);
+  const from = Math.round(Math.min(startTs, endTs));
+  const to = Math.round(Math.max(startTs, endTs));
+  if (to <= from + 10) {
+    renderChart();
+    return;
+  }
+  state.prevRanges.push({ range: state.range, customFrom: state.customFrom, customTo: state.customTo });
+  state.range = 'custom';
+  state.customFrom = from;
+  state.customTo = to;
+  syncRangeControls();
+  syncZoomOutButton();
+  saveRangePreference();
+  loadSeries().catch(() => {});
+});
+
+els.zoomOutButton.addEventListener('click', () => {
+  if (state.prevRanges.length === 0) return;
+  const prev = state.prevRanges.pop();
+  state.range = prev.range;
+  state.customFrom = prev.customFrom;
+  state.customTo = prev.customTo;
+  syncRangeControls();
+  syncZoomOutButton();
+  saveRangePreference();
+  loadSeries().catch(() => {});
+});
+
 els.chart.addEventListener('mouseleave', () => {
+  if (state.drag) return;
   hideChartTooltip();
   renderChart();
 });
@@ -699,10 +1286,11 @@ window.addEventListener('resize', () => {
   hideChartTooltip();
   renderChart();
   renderUsageCharts();
+  syncWorkspaceHeights();
 });
 
 loadAll().catch((error) => {
-  els.collectorStatus.textContent = 'Error';
+  els.collectorStatus.textContent = t('error');
   els.collectorStatus.classList.add('error');
   els.collectorStatus.title = error.message;
 });
