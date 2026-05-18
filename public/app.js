@@ -15,12 +15,14 @@ const state = {
   drag: null,
   prevRanges: [],
   chartLoading: false,
-  lang: 'en'
+  lang: 'en',
+  liveMode: true
 };
 
 const els = {
   routerName: document.querySelector('#routerName'),
   collectorStatus: document.querySelector('#collectorStatus'),
+  liveToggle: document.querySelector('#liveToggle'),
   langToggle: document.querySelector('#langToggle'),
   themeSelect: document.querySelector('#themeSelect'),
   refreshButton: document.querySelector('#refreshButton'),
@@ -86,6 +88,7 @@ const translations = {
     filterClients: 'Filter clients',
     latest: 'Latest',
     live: 'Live',
+    static: 'Static',
     memory: 'Memory',
     mesh: 'Mesh',
     noDownloadData: 'No download data',
@@ -137,6 +140,7 @@ const translations = {
     filterClients: '筛选客户端',
     latest: '实时',
     live: '在线',
+    static: '静态',
     memory: '内存',
     mesh: 'Mesh',
     noDownloadData: '暂无下载数据',
@@ -209,6 +213,7 @@ const rowHtmlCache = new WeakMap();
 
 applyLanguage();
 applyTheme();
+renderLiveToggle();
 
 function formatRate(value) {
   return `${formatBytes(value)}/s`;
@@ -327,6 +332,18 @@ function applyLanguage() {
 function applyTheme() {
   document.documentElement.dataset.theme = state.theme;
   els.themeSelect.value = state.theme;
+}
+
+function renderLiveToggle() {
+  const span = els.liveToggle.querySelector('span');
+  if (state.liveMode) {
+    els.liveToggle.classList.remove('static');
+    els.liveToggle.title = state.lang === 'zh' ? '点击暂停自动更新' : 'Click to pause auto-updates';
+  } else {
+    els.liveToggle.classList.add('static');
+    els.liveToggle.title = state.lang === 'zh' ? '点击恢复自动更新' : 'Click to resume auto-updates';
+  }
+  span.textContent = state.liveMode ? t('live') : t('static');
 }
 
 function updateThemeLabels() {
@@ -556,6 +573,13 @@ function scheduleRefresh(pollSeconds) {
   const refreshMs = Math.max(1000, (Number(pollSeconds) || 30) * 1000);
   if (state.refreshTimer?.refreshMs === refreshMs) return;
   if (state.refreshTimer) clearInterval(state.refreshTimer.id);
+  
+  if (!state.liveMode) {
+    // In static mode, don't schedule auto-refresh
+    state.refreshTimer = null;
+    return;
+  }
+  
   state.refreshTimer = {
     refreshMs,
     id: setInterval(() => {
@@ -1254,6 +1278,7 @@ els.langToggle.addEventListener('click', () => {
   state.lang = state.lang === 'zh' ? 'en' : 'zh';
   saveLanguagePreference();
   applyLanguage();
+  renderLiveToggle();
   if (state.summary) renderSummary();
   renderClients();
   renderChart();
@@ -1267,6 +1292,16 @@ els.themeSelect.addEventListener('change', () => {
   renderChart();
   renderUsageCharts();
   syncWorkspaceHeights();
+});
+els.liveToggle.addEventListener('click', () => {
+  state.liveMode = !state.liveMode;
+  renderLiveToggle();
+  if (state.liveMode && state.summary) {
+    // Switching to live: re-schedule refresh with current settings
+    scheduleRefresh(state.summary.settings?.pollSeconds);
+    // Immediately load latest data
+    loadAll().catch(() => {});
+  }
 });
 els.refreshButton.addEventListener('click', async () => {
   els.collectorStatus.textContent = t('collecting');
