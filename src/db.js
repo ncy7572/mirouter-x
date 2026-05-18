@@ -179,7 +179,8 @@ export class Store {
       INSERT INTO clients (mac, name, oname, ip, type, is_ap, parent, last_seen_ts)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(mac) DO UPDATE SET
-        name = excluded.name,
+        name = CASE WHEN clients.name = clients.mac OR clients.name = ''
+                    THEN excluded.name ELSE clients.name END,
         oname = excluded.oname,
         ip = excluded.ip,
         type = excluded.type,

@@ -200,6 +200,7 @@ const pieColors = [
 const minChartRateBytes = 10 * 1024;
 const maxChartPoints = 1500;
 const MIN_RANGE_POINTS = { '1h': 30, '6h': 30, '1d': 12, '30d': 15 };
+const rowHtmlCache = new WeakMap();
 
 applyLanguage();
 applyTheme();
@@ -555,6 +556,16 @@ function scheduleRefresh(pollSeconds) {
   };
 }
 
+function clientRowInnerHtml(name, meta, upRate, downRate, upTotal, downTotal, volume, maxVolume, showAccumulated) {
+  return `<span class="client-text"><span class="client-name">${escapeHtml(name)}</span><span class="client-meta">${escapeHtml(meta)}</span></span><span class="client-traffic">${trafficLine('up', upRate, upTotal, showAccumulated)}${trafficLine('down', downRate, downTotal, showAccumulated)}</span>${volumeBar(volume, maxVolume, showAccumulated)}`;
+}
+
+function setRowHtml(el, html) {
+  if (rowHtmlCache.get(el) === html) return;
+  el.innerHTML = html;
+  rowHtmlCache.set(el, html);
+}
+
 function renderClients() {
   const query = els.clientSearch.value.trim().toLowerCase();
   const usage = usageByMac();
@@ -575,45 +586,66 @@ function renderClients() {
       ? Number(totals?.down_bytes || 0) + Number(totals?.up_bytes || 0)
       : Number(client.down_bps || 0) + Number(client.up_bps || 0);
   };
-  const maxVolume = Math.max(
-    1,
-    aggregateVolume,
-    ...clients.map(clientVolume)
-  );
+  const maxVolume = Math.max(1, aggregateVolume, ...clients.map(clientVolume));
 
   els.clientTotal.textContent = `${state.clients.length} ${t('total')}`;
   els.clientMetricToggle.textContent = showAccumulated ? t('accumulated') : t('latest');
   els.clientMetricToggle.setAttribute('aria-pressed', String(showAccumulated));
-  const allActive = state.selectedMac === '' ? ' active' : '';
-  els.clientList.innerHTML = `
-    <button class="client-row${allActive}" data-mac="">
-        <span class="client-text">
-          <span class="client-name">${escapeHtml(t('wanAggregate'))}</span>
-          <span class="client-meta">${escapeHtml(t('allRouterTraffic'))}</span>
-      </span>
-      <span class="client-traffic">
-        ${trafficLine('up', state.summary?.latest?.wan_up_bps || 0, totalUp, showAccumulated)}
-        ${trafficLine('down', state.summary?.latest?.wan_down_bps || 0, totalDown, showAccumulated)}
-      </span>
-      ${volumeBar(aggregateVolume, maxVolume, showAccumulated)}
-    </button>
-    ${clients.map((client) => {
+
+  // Build desired row descriptors
+  const desired = [
+    {
+      mac: '',
+      active: state.selectedMac === '',
+      html: clientRowInnerHtml(
+        t('wanAggregate'), t('allRouterTraffic'),
+        state.summary?.latest?.wan_up_bps || 0,
+        state.summary?.latest?.wan_down_bps || 0,
+        totalUp, totalDown, aggregateVolume, maxVolume, showAccumulated
+      )
+    },
+    ...clients.map((client) => {
       const totals = usage.get(client.mac);
-      return `
-      <button class="client-row${client.mac === state.selectedMac ? ' active' : ''}" data-mac="${escapeHtml(client.mac)}">
-        <span class="client-text">
-          <span class="client-name">${escapeHtml(client.name || client.oname || client.mac)}</span>
-          <span class="client-meta">${escapeHtml(client.ip || t('noIp'))} · ${escapeHtml(client.mac)}</span>
-        </span>
-        <span class="client-traffic">
-          ${trafficLine('up', client.up_bps, totals?.up_bytes || 0, showAccumulated)}
-          ${trafficLine('down', client.down_bps, totals?.down_bytes || 0, showAccumulated)}
-        </span>
-        ${volumeBar(clientVolume(client), maxVolume, showAccumulated)}
-      </button>
-    `;
-    }).join('')}
-  `;
+      return {
+        mac: client.mac,
+        active: client.mac === state.selectedMac,
+        html: clientRowInnerHtml(
+          client.name || client.oname || client.mac,
+          `${client.ip || t('noIp')} · ${client.mac}`,
+          client.up_bps, client.down_bps,
+          totals?.up_bytes || 0, totals?.down_bytes || 0,
+          clientVolume(client), maxVolume, showAccumulated
+        )
+      };
+    })
+  ];
+
+  // Collect existing row elements keyed by mac
+  const existing = new Map();
+  for (const el of els.clientList.children) {
+    existing.set(el.dataset.mac, el);
+  }
+
+  // Reconcile: update content, reorder in-place — never touches clientList.innerHTML
+  for (let i = 0; i < desired.length; i++) {
+    const { mac, active, html } = desired[i];
+    let el = existing.get(mac);
+    if (el) {
+      existing.delete(mac);
+    } else {
+      el = document.createElement('button');
+      el.className = 'client-row';
+      el.dataset.mac = mac;
+    }
+    setRowHtml(el, html);
+    el.classList.toggle('active', active);
+    const slot = els.clientList.children[i];
+    if (el !== slot) els.clientList.insertBefore(el, slot ?? null);
+  }
+
+  // Remove rows no longer in the list
+  for (const el of existing.values()) el.remove();
+
   syncWorkspaceHeights();
 }
 
