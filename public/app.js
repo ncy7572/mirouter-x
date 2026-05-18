@@ -577,10 +577,6 @@ function setRowHtml(el, html) {
 function renderClients() {
   const query = els.clientSearch.value.trim().toLowerCase();
   const usage = usageByMac();
-  const clients = state.clients.filter((client) => {
-    const haystack = `${client.name} ${client.oname} ${client.ip} ${client.mac}`.toLowerCase();
-    return haystack.includes(query);
-  });
   const totalDown = Number(state.usage?.down?.total) || 0;
   const totalUp = Number(state.usage?.up?.total) || 0;
   const showAccumulated = effectiveClientMetric() !== 'latest';
@@ -594,6 +590,12 @@ function renderClients() {
       ? Number(totals?.down_bytes || 0) + Number(totals?.up_bytes || 0)
       : Number(client.down_bps || 0) + Number(client.up_bps || 0);
   };
+  const clients = state.clients
+    .filter((client) => {
+      const haystack = `${client.name} ${client.oname} ${client.ip} ${client.mac}`.toLowerCase();
+      return haystack.includes(query);
+    })
+    .sort((a, b) => clientVolume(b) - clientVolume(a));
   const maxVolume = Math.max(1, aggregateVolume, ...clients.map(clientVolume));
 
   els.clientTotal.textContent = `${state.clients.length} ${t('total')}`;
