@@ -14,6 +14,7 @@ const state = {
   hoverIndex: null,
   drag: null,
   prevRanges: [],
+  chartLoading: false,
   lang: 'en'
 };
 
@@ -56,7 +57,8 @@ const els = {
   usageDownLegend: document.querySelector('#usageDownLegend'),
   usageUpLegend: document.querySelector('#usageUpLegend'),
   usageDownTotal: document.querySelector('#usageDownTotal'),
-  usageUpTotal: document.querySelector('#usageUpTotal')
+  usageUpTotal: document.querySelector('#usageUpTotal'),
+  pieTooltip: document.querySelector('#pieTooltip')
 };
 
 restoreRangePreference();
@@ -109,6 +111,7 @@ const translations = {
     wanTraffic: 'WAN Traffic',
     wanUp: 'WAN Up',
     zoomOut: '↩ Zoom out',
+    loading: 'Loading…',
     waitingSamples: 'Waiting for traffic samples',
     detailDataCleaned: 'Detail data not available — raw samples are kept for {days} days (MIROUTER_RETENTION_DET_DAYS)',
     notEnoughData: 'Not enough data: {current} / {required} points',
@@ -159,6 +162,7 @@ const translations = {
     wanTraffic: 'WAN 流量',
     wanUp: 'WAN 上传',
     zoomOut: '↩ 缩小',
+    loading: '加载中…',
     waitingSamples: '等待流量样本',
     detailDataCleaned: '详细数据不可用 — 原始样本保留 {days} 天（MIROUTER_RETENTION_DET_DAYS）',
     notEnoughData: '数据不足：{current} / {required} 个数据点',
@@ -197,6 +201,7 @@ const pieColors = [
   '#6f8f8a',
   '#c7b29f'
 ];
+const pieHitCache = new WeakMap(); // canvas → { segments, cx, cy, radius, innerRadius }
 const minChartRateBytes = 10 * 1024;
 const maxChartPoints = 1500;
 const MIN_RANGE_POINTS = { '1h': 30, '6h': 30, '1d': 12, '30d': 15 };
@@ -376,6 +381,8 @@ async function loadAll() {
 }
 
 async function loadSeries() {
+  state.chartLoading = true;
+  renderChart();
   const params = buildRangeParams();
   params.set('maxPoints', String(maxPointsForRange(state.range)));
   if (state.selectedMac) params.set('mac', state.selectedMac);
@@ -384,6 +391,7 @@ async function loadSeries() {
     getJson(`/api/series?${params}`),
     getJson(`/api/usage?${usageParams}`)
   ]);
+  state.chartLoading = false;
   state.series = seriesPayload.points ?? [];
   state.seriesBucket = Number(seriesPayload.bucket) || 0;
   state.hasBand = seriesPayload.hasBand ?? false;
@@ -773,6 +781,12 @@ function renderChart() {
     ? `${selected.ip || t('noIp')} · ${selected.mac}`
     : t('downstreamUpstream');
 
+  if (state.chartLoading) {
+    els.emptyChart.textContent = t('loading');
+    els.emptyChart.classList.add('show');
+    return;
+  }
+
   const points = state.series;
   const dailyBars = useDailyStackedBars();
   const minRequired = dailyBars ? 1 : 2;
@@ -891,16 +905,20 @@ function renderPie({ canvas, legend, total, data, emptyLabel }) {
   }
 
   let start = -Math.PI / 2;
+  const segments = [];
   items.forEach((item, index) => {
     const angle = (item.bytes / sum) * Math.PI * 2;
-    ctx.fillStyle = pieColor(index);
+    const color = pieColor(index);
+    ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.arc(cx, cy, radius, start, start + angle);
     ctx.closePath();
     ctx.fill();
+    segments.push({ item, color, start, end: start + angle, percent: (item.bytes / sum) * 100 });
     start += angle;
   });
+  pieHitCache.set(canvas, { segments, cx, cy, radius, innerRadius: radius * 0.58 });
 
   ctx.fillStyle = cssColor('--control');
   ctx.beginPath();
@@ -1335,6 +1353,68 @@ window.addEventListener('resize', () => {
   renderUsageCharts();
   syncWorkspaceHeights();
 });
+
+function hitTestPie(canvas, event) {
+  const data = pieHitCache.get(canvas);
+  if (!data || !data.segments.length) return null;
+  const rect = canvas.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  const dx = x - data.cx;
+  const dy = y - data.cy;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist > data.radius || dist < data.innerRadius) return null;
+  let angle = Math.atan2(dy, dx);
+  if (angle < -Math.PI / 2) angle += Math.PI * 2;
+  return data.segments.find((seg) => angle >= seg.start && angle < seg.end) ?? null;
+}
+
+function showPieTooltip(seg, event) {
+  els.pieTooltip.innerHTML = `
+    <div class="pie-tooltip-name">
+      <span class="pie-tooltip-swatch" style="background:${seg.color}"></span>${escapeHtml(seg.item.name)}
+    </div>
+    <div class="pie-tooltip-row">
+      <span>${escapeHtml(formatBytes(seg.item.bytes))}</span>
+      <span>${seg.percent.toFixed(seg.percent >= 10 ? 0 : 1)}%</span>
+    </div>
+  `;
+  els.pieTooltip.classList.add('show');
+  positionPieTooltip(event);
+}
+
+function positionPieTooltip(event) {
+  const tip = els.pieTooltip;
+  const tw = tip.offsetWidth;
+  const th = tip.offsetHeight;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const x = event.clientX + 14 + tw > vw ? event.clientX - tw - 14 : event.clientX + 14;
+  const y = Math.min(Math.max(event.clientY - th / 2, 8), vh - th - 8);
+  tip.style.left = `${x}px`;
+  tip.style.top = `${y}px`;
+}
+
+function hidePieTooltip() {
+  els.pieTooltip.classList.remove('show');
+}
+
+for (const canvas of [els.usageDownChart, els.usageUpChart]) {
+  canvas.addEventListener('mousemove', (event) => {
+    const seg = hitTestPie(canvas, event);
+    if (seg) {
+      showPieTooltip(seg, event);
+      canvas.style.cursor = 'pointer';
+    } else {
+      hidePieTooltip();
+      canvas.style.cursor = '';
+    }
+  });
+  canvas.addEventListener('mouseleave', () => {
+    hidePieTooltip();
+    canvas.style.cursor = '';
+  });
+}
 
 loadAll().catch((error) => {
   els.collectorStatus.textContent = t('error');
