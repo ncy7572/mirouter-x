@@ -654,11 +654,13 @@ function syncWorkspaceHeights() {
   els.sidePanel.style.maxHeight = '';
   if (window.matchMedia('(max-width: 1100px)').matches) return;
 
+  const savedScroll = els.clientList.scrollTop;
   requestAnimationFrame(() => {
     const chartHeight = els.chartPanel.getBoundingClientRect().height;
     if (chartHeight <= 0) return;
     els.sidePanel.style.height = `${chartHeight}px`;
     els.sidePanel.style.maxHeight = `${chartHeight}px`;
+    els.clientList.scrollTop = savedScroll;
   });
 }
 
