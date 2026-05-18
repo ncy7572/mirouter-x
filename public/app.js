@@ -21,6 +21,7 @@ const state = {
 
 const els = {
   routerName: document.querySelector('#routerName'),
+  databaseSize: document.querySelector('#databaseSize'),
   collectorStatus: document.querySelector('#collectorStatus'),
   langToggle: document.querySelector('#langToggle'),
   themeSelect: document.querySelector('#themeSelect'),
@@ -81,6 +82,7 @@ const translations = {
     collectNow: 'Collect now',
     collecting: 'Collecting',
     connecting: 'Connecting',
+    databaseSize: 'SQLite data size',
     down: 'Down',
     downstreamUpstream: 'Downstream and upstream throughput',
     endTime: 'End time',
@@ -135,6 +137,7 @@ const translations = {
     collectNow: '立即采集',
     collecting: '采集中',
     connecting: '连接中',
+    databaseSize: 'SQLite 数据大小',
     down: '下载',
     downstreamUpstream: '下载与上传吞吐',
     endTime: '结束时间',
@@ -270,6 +273,18 @@ function formatBytes(value) {
   return `${scaled.toFixed(digits)} ${units[unit]}`;
 }
 
+function formatStorageSize(value) {
+  const units = ['KB', 'MB', 'GB'];
+  let scaled = Math.max(0, Number(value) || 0) / 1024;
+  let unit = 0;
+  while (scaled >= 1024 && unit < units.length - 1) {
+    scaled /= 1024;
+    unit += 1;
+  }
+  const digits = unit === 0 ? 1 : 2;
+  return `${scaled.toFixed(digits)} ${units[unit]}`;
+}
+
 function usageByMac() {
   return new Map((state.usage?.clients ?? []).map((client) => [client.mac, client]));
 }
@@ -319,6 +334,7 @@ function applyLanguage() {
   els.refreshButton.title = t('collectNow');
   els.refreshButton.setAttribute('aria-label', t('collectNow'));
   els.collectorStatus.setAttribute('aria-label', t('liveUpdatesLabel'));
+  els.databaseSize.title = t('databaseSize');
   els.chart.setAttribute('aria-label', t('trafficChart'));
   updateThemeLabels();
   document.querySelectorAll('[data-i18n]').forEach((item) => {
@@ -329,6 +345,9 @@ function applyLanguage() {
   });
   document.querySelectorAll('[data-i18n-aria-label]').forEach((item) => {
     item.setAttribute('aria-label', t(item.dataset.i18nAriaLabel));
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach((item) => {
+    item.title = t(item.dataset.i18nTitle);
   });
   syncRangeButtonStates();
 }
@@ -541,6 +560,7 @@ function renderSummary() {
   els.routerName.textContent = hardware.displayName || hardware.DisplayRomVer
     ? `${hardware.displayName || t('xiaomiRouter')} · ${hardware.platform || ''}`.trim()
     : t('xiaomiRouter');
+  els.databaseSize.textContent = formatStorageSize(state.summary.database?.sizeBytes);
 
   els.collectorStatus.classList.remove('ok', 'error');
   els.collectorStatus.setAttribute('aria-pressed', String(state.liveUpdates));

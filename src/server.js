@@ -92,6 +92,9 @@ function handleApi(req, res, url) {
   if (url.pathname === '/api/summary') {
     sendJson(res, 200, {
       ...store.summary(),
+      database: {
+        sizeBytes: store.sizeBytes()
+      },
       collector: state,
       settings: {
         host: config.host,

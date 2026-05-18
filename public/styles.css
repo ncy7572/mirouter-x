@@ -215,6 +215,19 @@ h2 {
   gap: 10px;
 }
 
+.database-size {
+  min-width: 86px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+
 .status-pill {
   min-width: 110px;
   padding: 8px 12px;

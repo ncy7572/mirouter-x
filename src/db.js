@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
@@ -10,6 +10,7 @@ function asNumber(value, fallback = 0) {
 export class Store {
   constructor(dbPath) {
     mkdirSync(dirname(dbPath), { recursive: true });
+    this.dbPath = dbPath;
     this.db = new DatabaseSync(dbPath);
     this.db.exec('PRAGMA journal_mode = WAL');
     this.db.exec('PRAGMA synchronous = NORMAL');
@@ -17,6 +18,17 @@ export class Store {
     this._writeQueue = [];
     this.prepareSchema();
     this.prepareStatements();
+  }
+
+  sizeBytes() {
+    return [this.dbPath, `${this.dbPath}-wal`, `${this.dbPath}-shm`].reduce((total, filePath) => {
+      try {
+        return total + statSync(filePath).size;
+      } catch (error) {
+        if (error.code === 'ENOENT') return total;
+        throw error;
+      }
+    }, 0);
   }
 
   prepareSchema() {
