@@ -649,18 +649,31 @@ function renderClients() {
   syncWorkspaceHeights();
 }
 
+let _syncRafId = null;
+let _syncSavedScroll = 0;
+
 function syncWorkspaceHeights() {
+  // Only capture scroll on the first call in a burst — subsequent calls within the
+  // same frame would see a layout-shifted (zero) scroll after height is cleared.
+  if (_syncRafId === null) _syncSavedScroll = els.clientList.scrollTop;
+
   els.sidePanel.style.height = '';
   els.sidePanel.style.maxHeight = '';
-  if (window.matchMedia('(max-width: 1100px)').matches) return;
 
-  const savedScroll = els.clientList.scrollTop;
-  requestAnimationFrame(() => {
+  if (_syncRafId !== null) cancelAnimationFrame(_syncRafId);
+
+  if (window.matchMedia('(max-width: 1100px)').matches) {
+    _syncRafId = null;
+    return;
+  }
+
+  _syncRafId = requestAnimationFrame(() => {
+    _syncRafId = null;
     const chartHeight = els.chartPanel.getBoundingClientRect().height;
     if (chartHeight <= 0) return;
     els.sidePanel.style.height = `${chartHeight}px`;
     els.sidePanel.style.maxHeight = `${chartHeight}px`;
-    els.clientList.scrollTop = savedScroll;
+    els.clientList.scrollTop = _syncSavedScroll;
   });
 }
 
