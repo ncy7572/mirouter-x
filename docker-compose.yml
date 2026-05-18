@@ -11,5 +11,7 @@ services:
       HOST: 0.0.0.0
       PORT: ${PORT:-3102}
       MIROUTER_DB: /app/data/mirouter.sqlite
+      MIROUTER_RETENTION_DET_DAYS: ${MIROUTER_RETENTION_DET_DAYS:-7}
+      MIROUTER_RETENTION_AGG_DAYS: ${MIROUTER_RETENTION_AGG_DAYS:-365}
     volumes:
       - ./data:/app/data

@@ -14,6 +14,7 @@ export class Store {
     this.db.exec('PRAGMA journal_mode = WAL');
     this.db.exec('PRAGMA synchronous = NORMAL');
     this.db.exec('PRAGMA temp_store = MEMORY');
+    this._writeQueue = [];
     this.prepareSchema();
     this.prepareStatements();
   }
@@ -193,61 +194,77 @@ export class Store {
     `);
   }
 
-  saveSnapshot(snapshot) {
+  queueSnapshot(snapshot) {
     const ts = Math.floor(Date.now() / 1000);
+    this._writeQueue.push({ snapshot, ts });
+    return ts;
+  }
+
+  flush() {
+    if (this._writeQueue.length === 0) return 0;
+    const batch = this._writeQueue.splice(0);
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      this.insertSample.run(
-        ts,
-        asNumber(snapshot.status.wan?.downspeed),
-        asNumber(snapshot.status.wan?.upspeed),
-        asNumber(snapshot.status.wan?.download),
-        asNumber(snapshot.status.wan?.upload),
-        asNumber(snapshot.status.cpu?.load),
-        asNumber(snapshot.status.mem?.usage),
-        asNumber(snapshot.status.upTime ?? snapshot.status.uptime),
-        asNumber(snapshot.status.count?.online),
-        asNumber(snapshot.status.count?.all)
-      );
-
-      for (const client of snapshot.devices?.list ?? []) {
-        if (!client.mac) continue;
-        const ip = client.ip?.find((item) => item.active)?.ip || client.ip?.[0]?.ip || '';
-        const stats = client.statistics ?? {};
-        this.upsertClient.run(
-          client.mac,
-          client.name || client.oname || client.mac,
-          client.oname || '',
-          ip,
-          asNumber(client.type),
-          asNumber(client.isap),
-          client.parent || '',
-          ts
-        );
-        this.insertClientSample.run(
-          ts,
-          client.mac,
-          asNumber(stats.downspeed),
-          asNumber(stats.upspeed),
-          asNumber(stats.online),
-          asNumber(client.online) ? 1 : 0
-        );
+      for (const { snapshot, ts } of batch) {
+        this._writeSample(snapshot, ts);
       }
-
-      this.setMeta('last_snapshot', JSON.stringify({
-        ts,
-        router: snapshot.status.hardware,
-        counts: snapshot.status.count,
-        wan: snapshot.wan,
-        topo: snapshot.topo,
-        wifi: sanitizeWifi(snapshot.wifi)
+      const { snapshot: last, ts: lastTs } = batch[batch.length - 1];
+      this.db.prepare(`
+        INSERT INTO meta (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run('last_snapshot', JSON.stringify({
+        ts: lastTs,
+        router: last.status.hardware,
+        counts: last.status.count,
+        wan: last.wan,
+        topo: last.topo,
+        wifi: sanitizeWifi(last.wifi)
       }));
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
+      this._writeQueue.unshift(...batch);
       throw error;
     }
-    return ts;
+    return batch.length;
+  }
+
+  _writeSample(snapshot, ts) {
+    this.insertSample.run(
+      ts,
+      asNumber(snapshot.status.wan?.downspeed),
+      asNumber(snapshot.status.wan?.upspeed),
+      asNumber(snapshot.status.wan?.download),
+      asNumber(snapshot.status.wan?.upload),
+      asNumber(snapshot.status.cpu?.load),
+      asNumber(snapshot.status.mem?.usage),
+      asNumber(snapshot.status.upTime ?? snapshot.status.uptime),
+      asNumber(snapshot.status.count?.online),
+      asNumber(snapshot.status.count?.all)
+    );
+    for (const client of snapshot.devices?.list ?? []) {
+      if (!client.mac) continue;
+      const ip = client.ip?.find((item) => item.active)?.ip || client.ip?.[0]?.ip || '';
+      const stats = client.statistics ?? {};
+      this.upsertClient.run(
+        client.mac,
+        client.name || client.oname || client.mac,
+        client.oname || '',
+        ip,
+        asNumber(client.type),
+        asNumber(client.isap),
+        client.parent || '',
+        ts
+      );
+      this.insertClientSample.run(
+        ts,
+        client.mac,
+        asNumber(stats.downspeed),
+        asNumber(stats.upspeed),
+        asNumber(stats.online),
+        asNumber(client.online) ? 1 : 0
+      );
+    }
   }
 
   rollup() {

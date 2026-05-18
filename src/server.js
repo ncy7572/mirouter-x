@@ -63,7 +63,7 @@ async function collect() {
   state.collecting = true;
   try {
     const snapshot = await router.snapshot();
-    const ts = store.saveSnapshot(snapshot);
+    const ts = store.queueSnapshot(snapshot);
     store.cleanup(config.retentionDetDays, config.retentionAggDays);
     state.lastCollectedAt = ts;
     state.lastError = '';
@@ -72,6 +72,14 @@ async function collect() {
     logError(`[Mirouter X] collect failed: ${error.message}`);
   } finally {
     state.collecting = false;
+  }
+}
+
+function flushWrites() {
+  try {
+    store.flush();
+  } catch (error) {
+    logError(`[Mirouter X] flush failed: ${error.message}`);
   }
 }
 
@@ -152,6 +160,7 @@ server.listen(config.port, config.listenHost, () => {
   collect();
   store.rollup();
   setInterval(collect, config.pollSeconds * 1000).unref();
+  setInterval(flushWrites, 5000).unref();
   setInterval(() => store.rollup(), 60 * 1000).unref();
   if (config.logSummaryMinutes > 0) {
     setInterval(logApiSummary, config.logSummaryMinutes * 60 * 1000).unref();
