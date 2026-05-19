@@ -620,14 +620,13 @@ h2 {
 
 .zoom-out-button {
   position: absolute;
-  top: 22px;
-  right: 22px;
+  top: 14px;
+  right: 14px;
   z-index: 3;
   height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--accent);
-  border-radius: 8px;
-  background: var(--active);
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--accent);
   cursor: pointer;
   font-size: 12px;
@@ -636,8 +635,13 @@ h2 {
 }
 
 .zoom-out-button:hover {
-  background: var(--accent);
-  color: var(--surface);
+  color: var(--accent-2);
+}
+
+.zoom-out-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
 }
 
 .zoom-out-button[hidden] {
