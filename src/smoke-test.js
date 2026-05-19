@@ -3,7 +3,7 @@ import { Store } from './db.js';
 import { RouterClient } from './router-client.js';
 
 const store = new Store(':memory:');
-store.saveSnapshot({
+store.queueSnapshot({
   status: {
     wan: { downspeed: '1200000', upspeed: '340000', download: '10', upload: '5' },
     cpu: { load: 0.12 },
@@ -30,6 +30,7 @@ store.saveSnapshot({
   wan: { code: 0 },
   wifi: { code: 0, info: [{ ssid: 'Demo', password: 'secret' }] }
 });
+store.flush();
 
 const summary = store.summary();
 const clients = store.clients();

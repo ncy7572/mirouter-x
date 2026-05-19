@@ -430,8 +430,8 @@ export class Store {
     const count1d = this.db.prepare('SELECT COUNT(*) AS n FROM samples_1d WHERE ts >= ?');
     const rangePoints = {
       '1h':  count1m.get(now - 3600)?.n ?? 0,
-      '6h':  count1m.get(now - 21600)?.n ?? 0,
-      '1d':  count1h.get(now - 86400)?.n ?? 0,
+      '1d':  count1m.get(now - 86400)?.n ?? 0,
+      '7d':  count1h.get(now - 604800)?.n ?? 0,
       '30d': count1d.get(now - 2592000)?.n ?? 0
     };
     return { latest, lastSnapshot, topClients, rangePoints };
@@ -591,6 +591,16 @@ export class Store {
   }
 
   usage({ from, to, limit = 9 }) {
+    const span = Math.max(1, to - from);
+    const { tier } = seriesTier(span, 900);
+    const rows = tier === 'raw'
+      ? this._usageRaw(from, to)
+      : this._usageRollup({ from, to, tier }) || this._usageRaw(from, to);
+
+    return this._usagePayload({ from, to, rows, limit });
+  }
+
+  _usageRaw(from, to) {
     const rows = this.db.prepare(`
       WITH ranged AS (
         SELECT
@@ -622,6 +632,44 @@ export class Store {
       WHERE down_bytes > 0 OR up_bytes > 0
     `).all(from, to, to, to, to, to);
 
+    return rows;
+  }
+
+  _usageRollup({ from, to, tier }) {
+    const chain = ROLLUP_CHAIN.slice(ROLLUP_CHAIN.indexOf(tier));
+
+    for (let i = 0; i < chain.length; i++) {
+      const src = chain[i];
+      const points = this.db.prepare(`
+        SELECT COUNT(DISTINCT ts) AS n
+        FROM client_samples_${src}
+        WHERE ts BETWEEN ? AND ?
+      `).get(from, to)?.n ?? 0;
+
+      if (points < MIN_TIER_POINTS && i < chain.length - 1) continue;
+
+      const rows = this.db.prepare(`
+        SELECT
+          cs.mac,
+          COALESCE(c.name, cs.mac) AS name,
+          COALESCE(c.oname, '') AS oname,
+          COALESCE(c.ip, '') AS ip,
+          SUM(cs.down_bytes) AS down_bytes,
+          SUM(cs.up_bytes) AS up_bytes
+        FROM client_samples_${src} cs
+        LEFT JOIN clients c ON c.mac = cs.mac
+        WHERE cs.ts BETWEEN ? AND ?
+        GROUP BY cs.mac
+        HAVING down_bytes > 0 OR up_bytes > 0
+      `).all(from, to);
+
+      return rows;
+    }
+
+    return null;
+  }
+
+  _usagePayload({ from, to, rows, limit }) {
     return {
       from,
       to,
@@ -643,7 +691,7 @@ const MIN_TIER_POINTS = 10;
 
 function seriesTier(span, maxPoints) {
   if (span < 1800) return { tier: 'raw', bucket: Math.max(1, Math.ceil(span / maxPoints)) };
-  if (span < 86400) return { tier: '1m', bucket: 60 };
+  if (span <= 86400) return { tier: '1m', bucket: 60 };
   if (span < 30 * 86400) return { tier: '1h', bucket: 3600 };
   return { tier: '1d', bucket: 86400 };
 }

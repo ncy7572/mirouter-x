@@ -43,8 +43,8 @@ function parseTimeRange(url) {
   const ranges = {
     '15m': 900,
     '1h': 3600,
-    '6h': 21600,
     '1d': 86400,
+    '7d': 604800,
     '30d': 2592000
   };
   const requestedFrom = Number.parseInt(url.searchParams.get('from') || '', 10);

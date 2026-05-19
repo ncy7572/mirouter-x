@@ -215,7 +215,7 @@ const pieColors = [
 const pieHitCache = new WeakMap(); // canvas → { segments, cx, cy, radius, innerRadius }
 const minChartRateBytes = 10 * 1024;
 const maxChartPoints = 1500;
-const MIN_RANGE_POINTS = { '1h': 30, '6h': 30, '1d': 12, '30d': 15 };
+const MIN_RANGE_POINTS = { '1h': 30, '1d': 30, '7d': 24, '30d': 15 };
 const rowHtmlCache = new WeakMap();
 
 applyLanguage();
@@ -444,14 +444,14 @@ function buildRangeParams() {
 
 function maxPointsForRange(range) {
   const pollSeconds = Math.max(1, Number(state.summary?.settings?.pollSeconds) || 30);
-  const presets = { '15m': 900, '1h': 3600, '6h': 21600, '1d': 86400, '30d': 2592000 };
+  const presets = { '15m': 900, '1h': 3600, '1d': 86400, '7d': 604800, '30d': 2592000 };
   const seconds = range === 'custom'
     ? Math.max(1, (state.customTo || 0) - (state.customFrom || 0))
     : presets[range] ?? 900;
 
   // Mirror the tier map in db.js seriesTier()
   if (seconds < 1800) return Math.min(maxChartPoints, Math.ceil(seconds / pollSeconds)); // raw
-  if (seconds < 86400) return Math.min(maxChartPoints, Math.ceil(seconds / 60));         // _1m
+  if (seconds <= 86400) return Math.min(maxChartPoints, Math.ceil(seconds / 60));        // _1m
   if (seconds < 30 * 86400) return Math.min(maxChartPoints, Math.ceil(seconds / 3600)); // _1h
   return Math.min(maxChartPoints, Math.ceil(seconds / 86400));                           // _1d
 }
@@ -463,8 +463,8 @@ function currentRangeSeconds() {
   const ranges = {
     '15m': 900,
     '1h': 3600,
-    '6h': 21600,
     '1d': 86400,
+    '7d': 604800,
     '30d': 2592000
   };
   return ranges[state.range] ?? ranges['15m'];
@@ -488,7 +488,7 @@ function restoreRangePreference() {
     saved = fallback;
   }
 
-  const allowed = new Set(['15m', '1h', '6h', '1d', '30d', 'custom']);
+  const allowed = new Set(['15m', '1h', '1d', '7d', '30d', 'custom']);
   state.range = allowed.has(saved.range) ? saved.range : '15m';
   state.customFrom = Number.isFinite(Number(saved.customFrom)) ? Number(saved.customFrom) : fallback.customFrom;
   state.customTo = Number.isFinite(Number(saved.customTo)) ? Number(saved.customTo) : fallback.customTo;
@@ -810,7 +810,7 @@ function renderWifi(wifi) {
 
 function emptyChartMessage() {
   const span = currentRangeSeconds();
-  const tier = span < 1800 ? 'raw' : span < 86400 ? '1m' : span < 30 * 86400 ? '1h' : '1d';
+  const tier = span < 1800 ? 'raw' : span <= 86400 ? '1m' : span < 30 * 86400 ? '1h' : '1d';
   if (isFixedRange() && (tier === 'raw' || tier === '1m')) {
     const retDays = Number(state.summary?.settings?.retentionDetDays) || 7;
     const now = Math.floor(Date.now() / 1000);

@@ -66,8 +66,8 @@ The dashboard offers preset time ranges and full custom range selection. A backg
 |---|---|---|---|
 | 15m | raw samples | per poll | always enabled |
 | 1h | 1-minute rollup | 1 min | 30 |
-| 6h | 1-minute rollup | 1 min | 30 |
-| 1d | 1-hour rollup | 1 hour | 12 |
+| 1d | 1-minute rollup | 1 min | 30 |
+| 7d | 1-hour rollup | 1 hour | 24 |
 | 30d | 1-day rollup | 1 day | 15 |
 
 Preset buttons that do not yet have enough collected data are disabled and show a tooltip with the current and required point counts.
@@ -96,7 +96,7 @@ When a custom range is active the dashboard enters fixed range mode:
 Mirouter X keeps two classes of data with separate retention windows:
 
 - **Detail data** — raw samples (`samples`, `client_samples`) and 1-minute rollups. Retained for `MIROUTER_RETENTION_DET_DAYS` (default 7 days). Zooming into a window older than this limit in the raw or 1-minute tier will show no data; the chart displays a message indicating the retention setting.
-- **Aggregated data** — 1-hour and 1-day rollups. Retained for `MIROUTER_RETENTION_AGG_DAYS` (default 365 days). Longer views (1d, 30d) continue to work across the full aggregated retention window even after detail data is cleaned.
+- **Aggregated data** — 1-hour and 1-day rollups. Retained for `MIROUTER_RETENTION_AGG_DAYS` (default 365 days). Longer views (7d, 30d) continue to work across the full aggregated retention window even after detail data is cleaned.
 
 ## Database and Performance
 
