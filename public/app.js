@@ -10,6 +10,7 @@ const state = {
   seriesBucket: 0,
   hasBand: false,
   refreshTimer: null,
+  updatePromise: null,
   chartGeometry: null,
   hoverIndex: null,
   drag: null,
@@ -17,7 +18,8 @@ const state = {
   chartLoading: false,
   lang: 'en',
   liveUpdates: true,
-  frontendRefreshSeconds: 10
+  frontendRefreshSeconds: 10,
+  chartScale: 'log'
 };
 
 const els = {
@@ -43,6 +45,7 @@ const els = {
   chartPanel: document.querySelector('.chart-panel'),
   chartTitle: document.querySelector('#chartTitle'),
   chartSubtitle: document.querySelector('#chartSubtitle'),
+  chartScaleControl: document.querySelector('#chartScaleControl'),
   rangeControl: document.querySelector('#rangeControl'),
   customRange: document.querySelector('#customRange'),
   customFrom: document.querySelector('#customFrom'),
@@ -73,6 +76,7 @@ restoreLanguagePreference();
 restoreThemePreference();
 restoreLiveUpdatePreference();
 restoreFrontendRefreshPreference();
+restoreChartScalePreference();
 
 const translations = {
   en: {
@@ -111,6 +115,9 @@ const translations = {
     offline: 'Offline',
     online: 'Online',
     root: 'root',
+    scaleLinear: 'Linear',
+    scaleLog: 'Log',
+    scaleLabel: 'Chart Y scale',
     startTime: 'Start time',
     staticMode: 'Static',
     timeRange: 'Time range',
@@ -168,6 +175,9 @@ const translations = {
     offline: '离线',
     online: '在线',
     root: '主节点',
+    scaleLinear: '线性',
+    scaleLog: '对数',
+    scaleLabel: '图表 Y 轴缩放',
     startTime: '开始时间',
     staticMode: '静态',
     timeRange: '时间范围',
@@ -345,6 +355,7 @@ function applyLanguage() {
   els.refreshButton.setAttribute('aria-label', t('collectNow'));
   els.collectorStatus.setAttribute('aria-label', t('liveUpdatesLabel'));
   els.refreshRateSlider.setAttribute('aria-label', t('frontendRefreshLabel'));
+  els.chartScaleControl.setAttribute('aria-label', t('scaleLabel'));
   els.databaseSize.title = t('databaseSize');
   els.chart.setAttribute('aria-label', t('trafficChart'));
   updateThemeLabels();
@@ -361,6 +372,7 @@ function applyLanguage() {
     item.title = t(item.dataset.i18nTitle);
   });
   syncRangeButtonStates();
+  syncChartScaleControl();
 }
 
 function applyTheme() {
@@ -399,6 +411,15 @@ function effectiveClientMetric() {
 }
 
 async function loadAll() {
+  if (state.updatePromise) return state.updatePromise;
+
+  state.updatePromise = loadAllInner().finally(() => {
+    state.updatePromise = null;
+  });
+  return state.updatePromise;
+}
+
+async function loadAllInner() {
   const firstLoad = state.series.length === 0;
 
   if (isFixedRange() && !firstLoad) {
@@ -544,6 +565,15 @@ function saveFrontendRefreshPreference() {
   localStorage.setItem('mirouter.frontendRefreshSeconds', String(state.frontendRefreshSeconds));
 }
 
+function restoreChartScalePreference() {
+  const saved = localStorage.getItem('mirouter.chartScale');
+  state.chartScale = saved === 'linear' ? 'linear' : 'log';
+}
+
+function saveChartScalePreference() {
+  localStorage.setItem('mirouter.chartScale', state.chartScale);
+}
+
 function clampFrontendRefreshSeconds(value) {
   const seconds = Number.parseInt(value, 10);
   if (!Number.isFinite(seconds)) return 10;
@@ -553,6 +583,14 @@ function clampFrontendRefreshSeconds(value) {
 function syncFrontendRefreshControl() {
   els.refreshRateSlider.value = String(state.frontendRefreshSeconds);
   els.refreshRateValue.textContent = `${state.frontendRefreshSeconds}s`;
+}
+
+function syncChartScaleControl() {
+  const dailyBars = useDailyStackedBars();
+  els.chartScaleControl.hidden = dailyBars;
+  els.chartScaleControl.querySelectorAll('button[data-scale]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.scale === state.chartScale);
+  });
 }
 
 function syncRangeButtonStates() {
@@ -645,6 +683,7 @@ function scheduleRefresh() {
   state.refreshTimer = {
     refreshMs,
     id: setInterval(() => {
+      if (state.updatePromise || state.chartLoading) return;
       loadAll().catch(() => {});
     }, refreshMs)
   };
@@ -903,10 +942,12 @@ function renderChart() {
   const maxT = points[points.length - 1].ts;
 
   const x = (ts) => pad.left + ((ts - minT) / Math.max(1, maxT - minT)) * width;
-  const y = (value) => pad.top + height - ((Number(value) || 0) / maxY) * height;
-  state.chartGeometry = { pad, width, height, maxY, minT, maxT, mode: dailyBars ? 'daily-bars' : 'line' };
+  syncChartScaleControl();
+  const yMode = dailyBars ? 'linear' : state.chartScale;
+  const y = (value) => chartY(value, maxY, pad, height, yMode);
+  state.chartGeometry = { pad, width, height, maxY, minT, maxT, mode: dailyBars ? 'daily-bars' : 'line', yMode };
 
-  drawAxisLabels(ctx, pad, width, height, maxY, minT, maxT, dailyBars ? 'bytes' : 'rate');
+  drawAxisLabels(ctx, pad, width, height, maxY, minT, maxT, dailyBars ? 'bytes' : `rate-${yMode}`);
   if (dailyBars) {
     drawStackedBars(ctx, points, x, y, width);
     drawBarHover(ctx, points, x, y, pad, height);
@@ -1027,6 +1068,30 @@ function drawGrid(ctx, rect, pad, width, height) {
   ctx.strokeRect(pad.left, pad.top, width, height);
 }
 
+function chartY(value, maxY, pad, height, mode = 'linear') {
+  const numeric = Math.max(0, Number(value) || 0);
+  const max = Math.max(1, Number(maxY) || 1);
+  const ratio = mode === 'log'
+    ? Math.log1p(numeric) / Math.log1p(max)
+    : numeric / max;
+  return pad.top + height - Math.min(1, Math.max(0, ratio)) * height;
+}
+
+function chartValueAtGridLine(index, maxY, mode) {
+  const ratio = 1 - index / 4;
+  if (mode === 'rate-log') {
+    return Math.expm1(Math.log1p(Math.max(1, maxY)) * ratio);
+  }
+  return maxY * ratio;
+}
+
+function formatAxisTick(value, divisor) {
+  const scaled = Math.max(0, Number(value) || 0) / divisor;
+  if (scaled === 0) return '0';
+  if (scaled < 10) return scaled.toFixed(1);
+  return String(Math.round(scaled));
+}
+
 function drawAxisLabels(ctx, pad, width, height, maxY, minT, maxT, mode = 'rate') {
   const scale = mode === 'bytes' ? bytesAxisScale(maxY) : rateAxisScale(maxY);
   ctx.fillStyle = '#7d7065';
@@ -1034,12 +1099,12 @@ function drawAxisLabels(ctx, pad, width, height, maxY, minT, maxT, mode = 'rate'
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   for (let i = 0; i <= 4; i += 1) {
-    const value = maxY - (maxY / 4) * i;
-    ctx.fillText(String(Math.round(value / scale.divisor)), pad.left - 8, pad.top + (height / 4) * i);
+    const value = chartValueAtGridLine(i, maxY, mode);
+    ctx.fillText(formatAxisTick(value, scale.divisor), pad.left - 8, pad.top + (height / 4) * i);
   }
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.fillText(scale.label, pad.left, 8);
+  ctx.fillText(mode === 'rate-log' ? `${scale.label} ${t('scaleLog')}` : scale.label, pad.left, 8);
   ctx.textBaseline = 'top';
   ctx.fillText(formatTime(minT), pad.left + 40, pad.top + height + 10);
   ctx.textAlign = 'right';
@@ -1234,13 +1299,13 @@ function updateChartHover(event) {
 
 function showChartTooltip(point) {
   if (!point || !state.chartGeometry) return;
-  const { pad, width, height, maxY, minT, maxT, mode } = state.chartGeometry;
+  const { pad, width, height, maxY, minT, maxT, mode, yMode } = state.chartGeometry;
   const x = pad.left + ((point.ts - minT) / Math.max(1, maxT - minT)) * width;
   const dailyBars = mode === 'daily-bars';
   const totalBytes = (Number(point.down_bytes) || 0) + (Number(point.up_bytes) || 0);
-  const downY = pad.top + height - ((Number(point.down_bps) || 0) / maxY) * height;
-  const upY = pad.top + height - ((Number(point.up_bps) || 0) / maxY) * height;
-  const barY = pad.top + height - (totalBytes / maxY) * height;
+  const downY = chartY(point.down_bps, maxY, pad, height, yMode);
+  const upY = chartY(point.up_bps, maxY, pad, height, yMode);
+  const barY = chartY(totalBytes, maxY, pad, height, yMode);
   const y = dailyBars ? barY : Math.min(downY, upY);
 
   els.chartTooltip.innerHTML = `
@@ -1287,6 +1352,15 @@ els.rangeControl.addEventListener('click', async (event) => {
   syncZoomOutButton();
   saveRangePreference();
   await loadSeries();
+});
+
+els.chartScaleControl.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-scale]');
+  if (!button || button.dataset.scale === state.chartScale) return;
+  state.chartScale = button.dataset.scale === 'linear' ? 'linear' : 'log';
+  saveChartScalePreference();
+  syncChartScaleControl();
+  renderChart();
 });
 
 els.applyCustomRange.addEventListener('click', async () => {

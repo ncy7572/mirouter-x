@@ -98,6 +98,10 @@
               </div>
               <div class="range-tools">
                 <button class="zoom-out-button" id="zoomOutButton" type="button" hidden data-i18n="zoomOut">Reset</button>
+                <div class="scale-toggle" id="chartScaleControl" role="group" aria-label="Chart Y scale">
+                  <button data-scale="log" type="button" class="active" data-i18n="scaleLog">Log</button>
+                  <button data-scale="linear" type="button" data-i18n="scaleLinear">Linear</button>
+                </div>
                 <div class="segmented" id="rangeControl">
                   <button data-range="15m" class="active">15m</button>
                   <button data-range="1h">1h</button>
