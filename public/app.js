@@ -964,8 +964,10 @@ function renderChart() {
   const x = (ts) => pad.left + ((ts - minT) / Math.max(1, maxT - minT)) * width;
   syncChartScaleControl();
   const yMode = dailyBars ? 'linear' : state.chartScale;
-  const y = (value) => chartY(value, maxY, pad, height, yMode);
-  state.chartGeometry = { pad, width, height, maxY, minT, maxT, mode: dailyBars ? 'daily-bars' : 'line', yMode };
+  const axisScale = dailyBars ? bytesAxisScale(maxY) : rateAxisScale(maxY);
+  const logDivisor = yMode === 'log' ? axisScale.divisor : 1;
+  const y = (value) => chartY(value, maxY, pad, height, yMode, logDivisor);
+  state.chartGeometry = { pad, width, height, maxY, minT, maxT, mode: dailyBars ? 'daily-bars' : 'line', yMode, logDivisor };
 
   drawAxisLabels(ctx, pad, width, height, maxY, minT, maxT, dailyBars ? 'bytes' : `rate-${yMode}`);
   if (dailyBars) {
@@ -1088,19 +1090,22 @@ function drawGrid(ctx, rect, pad, width, height) {
   ctx.strokeRect(pad.left, pad.top, width, height);
 }
 
-function chartY(value, maxY, pad, height, mode = 'linear') {
+function chartY(value, maxY, pad, height, mode = 'linear', logDivisor = 1) {
   const numeric = Math.max(0, Number(value) || 0);
   const max = Math.max(1, Number(maxY) || 1);
+  const divisor = Math.max(1, Number(logDivisor) || 1);
   const ratio = mode === 'log'
-    ? Math.log1p(numeric) / Math.log1p(max)
+    ? Math.log2(1 + numeric / divisor) / Math.log2(1 + max / divisor)
     : numeric / max;
   return pad.top + height - Math.min(1, Math.max(0, ratio)) * height;
 }
 
-function chartValueAtGridLine(index, maxY, mode) {
+function chartValueAtGridLine(index, maxY, mode, logDivisor = 1) {
   const ratio = 1 - index / 4;
   if (mode === 'rate-log') {
-    return Math.expm1(Math.log1p(Math.max(1, maxY)) * ratio);
+    const divisor = Math.max(1, Number(logDivisor) || 1);
+    const scaledMax = Math.max(1, maxY / divisor);
+    return ((2 ** (Math.log2(1 + scaledMax) * ratio)) - 1) * divisor;
   }
   return maxY * ratio;
 }
@@ -1119,12 +1124,12 @@ function drawAxisLabels(ctx, pad, width, height, maxY, minT, maxT, mode = 'rate'
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   for (let i = 0; i <= 4; i += 1) {
-    const value = chartValueAtGridLine(i, maxY, mode);
+    const value = chartValueAtGridLine(i, maxY, mode, scale.divisor);
     ctx.fillText(formatAxisTick(value, scale.divisor), pad.left - 8, pad.top + (height / 4) * i);
   }
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.fillText(mode === 'rate-log' ? `${scale.label} ${t('scaleLog')}` : scale.label, pad.left, 8);
+  ctx.fillText(mode === 'rate-log' ? `${scale.label} ${t('scaleLog')}2` : scale.label, pad.left, 8);
   ctx.textBaseline = 'top';
   ctx.fillText(formatTime(minT), pad.left + 40, pad.top + height + 10);
   ctx.textAlign = 'right';
@@ -1323,13 +1328,13 @@ function updateChartHover(event) {
 
 function showChartTooltip(point) {
   if (!point || !state.chartGeometry) return;
-  const { pad, width, height, maxY, minT, maxT, mode, yMode } = state.chartGeometry;
+  const { pad, width, height, maxY, minT, maxT, mode, yMode, logDivisor } = state.chartGeometry;
   const x = pad.left + ((point.ts - minT) / Math.max(1, maxT - minT)) * width;
   const dailyBars = mode === 'daily-bars';
   const totalBytes = visibleTrafficTotal(point, 'bytes');
-  const downY = state.visibleSeries.down ? chartY(point.down_bps, maxY, pad, height, yMode) : Infinity;
-  const upY = state.visibleSeries.up ? chartY(point.up_bps, maxY, pad, height, yMode) : Infinity;
-  const barY = chartY(totalBytes, maxY, pad, height, yMode);
+  const downY = state.visibleSeries.down ? chartY(point.down_bps, maxY, pad, height, yMode, logDivisor) : Infinity;
+  const upY = state.visibleSeries.up ? chartY(point.up_bps, maxY, pad, height, yMode, logDivisor) : Infinity;
+  const barY = chartY(totalBytes, maxY, pad, height, yMode, logDivisor);
   const y = dailyBars ? barY : Math.min(downY, upY);
 
   els.chartTooltip.innerHTML = `
