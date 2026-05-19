@@ -167,7 +167,7 @@ select {
 .app-shell {
   width: min(1500px, calc(100vw - 32px));
   margin: 0 auto;
-  padding: 28px 0 40px;
+  padding: 12px 0 40px;
 }
 
 .topbar {
@@ -619,14 +619,11 @@ h2 {
 }
 
 .zoom-out-button {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  z-index: 3;
   height: 32px;
-  padding: 0;
-  border: 0;
-  background: transparent;
+  padding: 0 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--active);
   color: var(--accent);
   cursor: pointer;
   font-size: 12px;
@@ -635,7 +632,8 @@ h2 {
 }
 
 .zoom-out-button:hover {
-  color: var(--accent-2);
+  background: var(--accent);
+  color: var(--surface);
 }
 
 .zoom-out-button:focus-visible {
@@ -658,6 +656,10 @@ h2 {
 
 .scale-toggle[hidden] {
   display: none;
+}
+
+.scale-toggle {
+  margin-right: 10px;
 }
 
 .scale-toggle button,
@@ -1066,7 +1068,7 @@ canvas {
 @media (max-width: 680px) {
   .app-shell {
     width: min(100vw - 20px, 1500px);
-    padding-top: 16px;
+    padding-top: 10px;
   }
 
   .topbar,

@@ -114,12 +114,12 @@
                 <div class="custom-range" id="customRange" hidden>
                   <input id="customFrom" type="datetime-local" aria-label="Start time" data-i18n-aria-label="startTime">
                   <input id="customTo" type="datetime-local" aria-label="End time" data-i18n-aria-label="endTime">
+                  <button class="zoom-out-button" id="zoomOutButton" type="button" hidden data-i18n="zoomOut">Reset</button>
                   <button id="applyCustomRange" type="button" data-i18n="apply">Apply</button>
                 </div>
               </div>
             </div>
             <div class="chart-wrap">
-              <button class="zoom-out-button" id="zoomOutButton" type="button" hidden data-i18n="zoomOut">Reset</button>
               <canvas id="trafficChart" tabindex="0" aria-label="Traffic chart"></canvas>
               <div class="empty-chart" id="emptyChart" data-i18n="waitingSamples">Waiting for traffic samples</div>
               <div class="chart-tooltip" id="chartTooltip" role="status" aria-live="polite"></div>
