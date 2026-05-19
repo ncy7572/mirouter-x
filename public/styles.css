@@ -931,7 +931,26 @@ canvas {
   border-bottom: 1px solid var(--line);
 }
 
-.usage-head span {
+.usage-head h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.usage-arrow {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.usage-arrow.down {
+  color: var(--down);
+}
+
+.usage-arrow.up {
+  color: var(--up);
+}
+
+.usage-head > span {
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
