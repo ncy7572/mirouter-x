@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { existsSync, createReadStream } from 'node:fs';
 import { extname, relative, resolve, sep } from 'node:path';
+import { brotliCompressSync, constants as zlibConstants, gzipSync } from 'node:zlib';
 import { config } from './config.js';
 import { Store } from './db.js';
 import { RouterClient } from './router-client.js';
@@ -24,13 +25,43 @@ const mime = {
   '.json': 'application/json; charset=utf-8'
 };
 
-function sendJson(res, status, payload) {
-  const body = JSON.stringify(payload);
-  res.writeHead(status, {
+function sendJson(req, res, status, payload) {
+  const body = Buffer.from(JSON.stringify(payload));
+  const { body: responseBody, encoding } = compressBody(req, body);
+  const headers = {
     'content-type': 'application/json; charset=utf-8',
-    'cache-control': 'no-store'
-  });
-  res.end(body);
+    'cache-control': 'no-store',
+    'content-length': responseBody.length,
+    vary: 'Accept-Encoding'
+  };
+  if (encoding) headers['content-encoding'] = encoding;
+  res.writeHead(status, headers);
+  res.end(responseBody);
+}
+
+function compressBody(req, body) {
+  if (body.length < 1024) return { body, encoding: '' };
+
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (/\bbr\b/.test(acceptEncoding)) {
+    return {
+      body: brotliCompressSync(body, {
+        params: {
+          [zlibConstants.BROTLI_PARAM_QUALITY]: 4
+        }
+      }),
+      encoding: 'br'
+    };
+  }
+
+  if (/\bgzip\b/.test(acceptEncoding)) {
+    return {
+      body: gzipSync(body, { level: 6 }),
+      encoding: 'gzip'
+    };
+  }
+
+  return { body, encoding: '' };
 }
 
 function parseUrl(req) {
@@ -85,12 +116,12 @@ function flushWrites() {
 
 function handleApi(req, res, url) {
   if (url.pathname === '/api/health') {
-    sendJson(res, 200, { ok: true });
+    sendJson(req, res, 200, { ok: true });
     return true;
   }
 
   if (url.pathname === '/api/summary') {
-    sendJson(res, 200, {
+    sendJson(req, res, 200, {
       ...store.summary(),
       database: {
         sizeBytes: store.sizeBytes()
@@ -108,7 +139,7 @@ function handleApi(req, res, url) {
   }
 
   if (url.pathname === '/api/clients') {
-    sendJson(res, 200, { clients: store.clients() });
+    sendJson(req, res, 200, { clients: store.clients() });
     return true;
   }
 
@@ -116,7 +147,7 @@ function handleApi(req, res, url) {
     const { from, to } = parseTimeRange(url);
     const maxPoints = Number.parseInt(url.searchParams.get('maxPoints') || '900', 10);
     const mac = url.searchParams.get('mac') || '';
-    sendJson(res, 200, store.series({
+    sendJson(req, res, 200, store.series({
       from,
       to,
       maxPoints: Number.isFinite(maxPoints) ? Math.min(Math.max(maxPoints, 1), maxChartPoints) : 900,
@@ -127,12 +158,12 @@ function handleApi(req, res, url) {
 
   if (url.pathname === '/api/usage') {
     const { from, to } = parseTimeRange(url);
-    sendJson(res, 200, store.usage({ from, to, limit: 9 }));
+    sendJson(req, res, 200, store.usage({ from, to, limit: 9 }));
     return true;
   }
 
   if (url.pathname === '/api/collect' && req.method === 'POST') {
-    collect().then(() => sendJson(res, 200, { ok: !state.lastError, collector: state }));
+    collect().then(() => sendJson(req, res, 200, { ok: !state.lastError, collector: state }));
     return true;
   }
 

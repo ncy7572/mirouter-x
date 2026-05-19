@@ -79,7 +79,7 @@ If the natural rollup tier for a range has fewer than 10 data points, the query 
 ### Custom range and zoom
 
 - **Drag** left-to-right on the chart canvas to zoom into that exact time window. Repeat to zoom further.
-- The **↩ Zoom out** button appears in the toolbar whenever you are inside a zoom chain. Each click steps back one level; the full zoom history is preserved so multiple levels of zoom can be unwound one at a time.
+- The **Reset** button appears in the toolbar whenever you are inside a zoomed chart view. It restores the original range and clears the zoom history.
 - The **Time range** preset button opens date/time pickers for an arbitrary fixed window. Applying a manual range clears the zoom history.
 
 ### Fixed range mode

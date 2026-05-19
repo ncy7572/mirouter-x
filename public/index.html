@@ -15,7 +15,20 @@
         </div>
         <div class="topbar-actions">
           <div class="database-size" id="databaseSize" title="SQLite data size" data-i18n-title="databaseSize">--</div>
-          <button class="status-pill" id="collectorStatus" type="button" data-i18n="connecting">Connecting</button>
+          <button class="status-pill" id="collectorStatus" type="button" aria-label="Toggle live updates">
+            <svg class="status-refresh-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 12a9 9 0 0 1-15.3 6.4L3 16"></path>
+              <path d="M3 16v5h5"></path>
+              <path d="M3 12A9 9 0 0 1 18.3 5.6L21 8"></path>
+              <path d="M21 8V3h-5"></path>
+            </svg>
+            <span id="collectorStatusText">Connecting</span>
+          </button>
+          <label class="refresh-rate-control" title="Frontend refresh interval" data-i18n-title="frontendRefreshLabel">
+            <span id="refreshRateText" data-i18n="frontendRefreshShort">Refresh</span>
+            <input id="refreshRateSlider" type="range" min="1" max="60" step="1" value="10" aria-label="Frontend refresh interval">
+            <output id="refreshRateValue" for="refreshRateSlider">10s</output>
+          </label>
           <select class="theme-select" id="themeSelect" aria-label="Theme">
             <optgroup label="Light">
               <option value="light-warm">Light Warm</option>
@@ -84,7 +97,7 @@
                 <p id="chartSubtitle">Downstream and upstream throughput</p>
               </div>
               <div class="range-tools">
-                <button class="zoom-out-button" id="zoomOutButton" type="button" hidden data-i18n="zoomOut">↩ Zoom out</button>
+                <button class="zoom-out-button" id="zoomOutButton" type="button" hidden data-i18n="zoomOut">Reset</button>
                 <div class="segmented" id="rangeControl">
                   <button data-range="15m" class="active">15m</button>
                   <button data-range="1h">1h</button>

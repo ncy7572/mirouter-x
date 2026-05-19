@@ -16,13 +16,17 @@ const state = {
   prevRanges: [],
   chartLoading: false,
   lang: 'en',
-  liveUpdates: true
+  liveUpdates: true,
+  frontendRefreshSeconds: 10
 };
 
 const els = {
   routerName: document.querySelector('#routerName'),
   databaseSize: document.querySelector('#databaseSize'),
   collectorStatus: document.querySelector('#collectorStatus'),
+  collectorStatusText: document.querySelector('#collectorStatusText'),
+  refreshRateSlider: document.querySelector('#refreshRateSlider'),
+  refreshRateValue: document.querySelector('#refreshRateValue'),
   langToggle: document.querySelector('#langToggle'),
   themeSelect: document.querySelector('#themeSelect'),
   refreshButton: document.querySelector('#refreshButton'),
@@ -68,6 +72,7 @@ restoreClientMetricPreference();
 restoreLanguagePreference();
 restoreThemePreference();
 restoreLiveUpdatePreference();
+restoreFrontendRefreshPreference();
 
 const translations = {
   en: {
@@ -88,6 +93,8 @@ const translations = {
     endTime: 'End time',
     error: 'Error',
     filterClients: 'Filter clients',
+    frontendRefreshLabel: 'Frontend refresh interval',
+    frontendRefreshShort: 'Refresh',
     latest: 'Latest',
     live: 'Live',
     liveMode: 'Live',
@@ -117,7 +124,7 @@ const translations = {
     wanAggregate: 'WAN aggregate',
     wanTraffic: 'WAN Traffic',
     wanUp: 'WAN Up',
-    zoomOut: '↩ Zoom out',
+    zoomOut: 'Reset',
     loading: 'Loading…',
     waitingSamples: 'Waiting for traffic samples',
     detailDataCleaned: 'Detail data not available — raw samples are kept for {days} days (MIROUTER_RETENTION_DET_DAYS)',
@@ -143,6 +150,8 @@ const translations = {
     endTime: '结束时间',
     error: '错误',
     filterClients: '筛选客户端',
+    frontendRefreshLabel: '前端刷新间隔',
+    frontendRefreshShort: '刷新',
     latest: '实时',
     live: '在线',
     liveMode: '实时',
@@ -172,7 +181,7 @@ const translations = {
     wanAggregate: 'WAN 汇总',
     wanTraffic: 'WAN 流量',
     wanUp: 'WAN 上传',
-    zoomOut: '↩ 缩小',
+    zoomOut: '重置',
     loading: '加载中…',
     waitingSamples: '等待流量样本',
     detailDataCleaned: '详细数据不可用 — 原始样本保留 {days} 天（MIROUTER_RETENTION_DET_DAYS）',
@@ -220,6 +229,7 @@ const rowHtmlCache = new WeakMap();
 
 applyLanguage();
 applyTheme();
+syncFrontendRefreshControl();
 
 function formatRate(value) {
   return `${formatBytes(value)}/s`;
@@ -334,6 +344,7 @@ function applyLanguage() {
   els.refreshButton.title = t('collectNow');
   els.refreshButton.setAttribute('aria-label', t('collectNow'));
   els.collectorStatus.setAttribute('aria-label', t('liveUpdatesLabel'));
+  els.refreshRateSlider.setAttribute('aria-label', t('frontendRefreshLabel'));
   els.databaseSize.title = t('databaseSize');
   els.chart.setAttribute('aria-label', t('trafficChart'));
   updateThemeLabels();
@@ -410,16 +421,26 @@ async function loadAll() {
 
 async function loadSeries() {
   state.chartLoading = true;
+  if (state.summary) renderSummary();
   renderChart();
   const params = buildRangeParams();
   params.set('maxPoints', String(maxPointsForRange(state.range)));
   if (state.selectedMac) params.set('mac', state.selectedMac);
   const usageParams = buildRangeParams();
-  const [seriesPayload, usagePayload] = await Promise.all([
-    getJson(`/api/series?${params}`),
-    getJson(`/api/usage?${usageParams}`)
-  ]);
+  let seriesPayload;
+  let usagePayload;
+  try {
+    [seriesPayload, usagePayload] = await Promise.all([
+      getJson(`/api/series?${params}`),
+      getJson(`/api/usage?${usageParams}`)
+    ]);
+  } catch (error) {
+    state.chartLoading = false;
+    if (state.summary) renderSummary();
+    throw error;
+  }
   state.chartLoading = false;
+  if (state.summary) renderSummary();
   state.series = seriesPayload.points ?? [];
   state.seriesBucket = Number(seriesPayload.bucket) || 0;
   state.hasBand = seriesPayload.hasBand ?? false;
@@ -515,6 +536,25 @@ function saveLiveUpdatePreference() {
   localStorage.setItem('mirouter.liveUpdates', String(state.liveUpdates));
 }
 
+function restoreFrontendRefreshPreference() {
+  state.frontendRefreshSeconds = clampFrontendRefreshSeconds(localStorage.getItem('mirouter.frontendRefreshSeconds'));
+}
+
+function saveFrontendRefreshPreference() {
+  localStorage.setItem('mirouter.frontendRefreshSeconds', String(state.frontendRefreshSeconds));
+}
+
+function clampFrontendRefreshSeconds(value) {
+  const seconds = Number.parseInt(value, 10);
+  if (!Number.isFinite(seconds)) return 10;
+  return Math.min(Math.max(seconds, 1), 60);
+}
+
+function syncFrontendRefreshControl() {
+  els.refreshRateSlider.value = String(state.frontendRefreshSeconds);
+  els.refreshRateValue.textContent = `${state.frontendRefreshSeconds}s`;
+}
+
 function syncRangeButtonStates() {
   const rangePoints = state.summary?.rangePoints ?? {};
   els.rangeControl.querySelectorAll('button[data-range]').forEach((btn) => {
@@ -563,17 +603,18 @@ function renderSummary() {
   els.databaseSize.textContent = formatStorageSize(state.summary.database?.sizeBytes);
 
   els.collectorStatus.classList.remove('ok', 'error');
+  els.collectorStatus.classList.toggle('updating', state.chartLoading);
   els.collectorStatus.setAttribute('aria-pressed', String(state.liveUpdates));
   if (!settings.hasToken && !settings.canRefreshToken) {
-    els.collectorStatus.textContent = t('noPassword');
+    els.collectorStatusText.textContent = t('noPassword');
     els.collectorStatus.classList.add('error');
     els.collectorStatus.title = state.liveUpdates ? t('liveMode') : t('staticMode');
   } else if (collector.lastError) {
-    els.collectorStatus.textContent = t('offline');
+    els.collectorStatusText.textContent = t('offline');
     els.collectorStatus.classList.add('error');
     els.collectorStatus.title = `${state.liveUpdates ? t('liveMode') : t('staticMode')}: ${collector.lastError}`;
   } else {
-    els.collectorStatus.textContent = state.liveUpdates ? t('liveMode') : t('staticMode');
+    els.collectorStatusText.textContent = state.liveUpdates ? t('liveMode') : t('staticMode');
     els.collectorStatus.classList.add('ok');
     els.collectorStatus.title = t('liveUpdatesLabel');
   }
@@ -588,16 +629,16 @@ function renderSummary() {
   renderMesh(lastSnapshot?.topo);
   renderWifi(lastSnapshot?.wifi);
   syncRangeButtonStates();
-  scheduleRefresh(settings.pollSeconds);
+  scheduleRefresh();
 }
 
-function scheduleRefresh(pollSeconds) {
+function scheduleRefresh() {
   if (!state.liveUpdates) {
     if (state.refreshTimer) clearInterval(state.refreshTimer.id);
     state.refreshTimer = null;
     return;
   }
-  const refreshMs = Math.max(1000, (Number(pollSeconds) || 30) * 1000);
+  const refreshMs = state.frontendRefreshSeconds * 1000;
   if (state.refreshTimer?.refreshMs === refreshMs) return;
   if (state.refreshTimer) clearInterval(state.refreshTimer.id);
 
@@ -827,12 +868,6 @@ function renderChart() {
   els.chartSubtitle.textContent = selected
     ? `${selected.ip || t('noIp')} · ${selected.mac}`
     : t('downstreamUpstream');
-
-  if (state.chartLoading) {
-    els.emptyChart.textContent = t('loading');
-    els.emptyChart.classList.add('show');
-    return;
-  }
 
   const points = state.series;
   const dailyBars = useDailyStackedBars();
@@ -1313,8 +1348,15 @@ els.themeSelect.addEventListener('change', () => {
   renderUsageCharts();
   syncWorkspaceHeights();
 });
+els.refreshRateSlider.addEventListener('input', () => {
+  state.frontendRefreshSeconds = clampFrontendRefreshSeconds(els.refreshRateSlider.value);
+  syncFrontendRefreshControl();
+  saveFrontendRefreshPreference();
+  scheduleRefresh();
+});
 els.refreshButton.addEventListener('click', async () => {
-  els.collectorStatus.textContent = t('collecting');
+  els.collectorStatusText.textContent = t('collecting');
+  els.collectorStatus.classList.add('updating');
   await getJson('/api/collect', { method: 'POST' });
   await loadAll();
 });
@@ -1377,7 +1419,8 @@ document.addEventListener('mouseup', (event) => {
 
 els.zoomOutButton.addEventListener('click', () => {
   if (state.prevRanges.length === 0) return;
-  const prev = state.prevRanges.pop();
+  const prev = state.prevRanges[0];
+  state.prevRanges = [];
   state.range = prev.range;
   state.customFrom = prev.customFrom;
   state.customTo = prev.customTo;
@@ -1472,7 +1515,8 @@ for (const canvas of [els.usageDownChart, els.usageUpChart]) {
 }
 
 loadAll().catch((error) => {
-  els.collectorStatus.textContent = t('error');
+  els.collectorStatusText.textContent = t('error');
+  els.collectorStatus.classList.remove('updating');
   els.collectorStatus.classList.add('error');
   els.collectorStatus.title = error.message;
 });
