@@ -19,7 +19,11 @@ const state = {
   lang: 'en',
   liveUpdates: true,
   frontendRefreshSeconds: 10,
-  chartScale: 'log'
+  chartScale: 'log',
+  visibleSeries: {
+    down: true,
+    up: true
+  }
 };
 
 const els = {
@@ -57,6 +61,7 @@ const els = {
   chartTooltip: document.querySelector('#chartTooltip'),
   zoomOutButton: document.querySelector('#zoomOutButton'),
   bucketInfo: document.querySelector('#bucketInfo'),
+  legend: document.querySelector('.legend'),
   meshStatus: document.querySelector('#meshStatus'),
   meshList: document.querySelector('#meshList'),
   wifiStatus: document.querySelector('#wifiStatus'),
@@ -593,6 +598,20 @@ function syncChartScaleControl() {
   });
 }
 
+function syncLegendToggles() {
+  els.legend.querySelectorAll('.legend-toggle[data-series]').forEach((button) => {
+    const series = button.dataset.series;
+    button.setAttribute('aria-pressed', String(state.visibleSeries[series] !== false));
+  });
+}
+
+function visibleTrafficTotal(point, mode) {
+  const suffix = mode === 'bytes' ? '_bytes' : '_bps';
+  const down = state.visibleSeries.down ? Number(point[`down${suffix}`]) || 0 : 0;
+  const up = state.visibleSeries.up ? Number(point[`up${suffix}`]) || 0 : 0;
+  return down + up;
+}
+
 function syncRangeButtonStates() {
   const rangePoints = state.summary?.rangePoints ?? {};
   els.rangeControl.querySelectorAll('button[data-range]').forEach((btn) => {
@@ -930,13 +949,14 @@ function renderChart() {
   const width = rect.width - pad.left - pad.right;
   const height = rect.height - pad.top - pad.bottom;
   state.chartGeometry = null;
+  syncLegendToggles();
   drawGrid(ctx, rect, pad, width, height);
   if (isEmpty) return;
   const maxY = dailyBars
-    ? Math.max(1024, ...points.map((p) => (Number(p.down_bytes) || 0) + (Number(p.up_bytes) || 0)))
+    ? Math.max(1024, ...points.map((p) => visibleTrafficTotal(p, 'bytes')))
     : Math.max(minChartRateBytes, ...points.flatMap((p) => [
-        Number(p.down_bps) || 0, Number(p.up_bps) || 0,
-        ...(state.hasBand ? [Number(p.max_down_bps) || 0, Number(p.max_up_bps) || 0] : [])
+        ...(state.visibleSeries.down ? [Number(p.down_bps) || 0, ...(state.hasBand ? [Number(p.max_down_bps) || 0] : [])] : []),
+        ...(state.visibleSeries.up ? [Number(p.up_bps) || 0, ...(state.hasBand ? [Number(p.max_up_bps) || 0] : [])] : [])
       ]));
   const minT = points[0].ts;
   const maxT = points[points.length - 1].ts;
@@ -955,11 +975,11 @@ function renderChart() {
     return;
   }
   if (state.hasBand) {
-    drawBand(ctx, points, x, y, 'min_down_bps', 'max_down_bps', cssColor('--down'));
-    drawBand(ctx, points, x, y, 'min_up_bps', 'max_up_bps', cssColor('--up'));
+    if (state.visibleSeries.down) drawBand(ctx, points, x, y, 'min_down_bps', 'max_down_bps', cssColor('--down'));
+    if (state.visibleSeries.up) drawBand(ctx, points, x, y, 'min_up_bps', 'max_up_bps', cssColor('--up'));
   }
-  drawLine(ctx, points, x, y, 'down_bps', cssColor('--down'));
-  drawLine(ctx, points, x, y, 'up_bps', cssColor('--up'));
+  if (state.visibleSeries.down) drawLine(ctx, points, x, y, 'down_bps', cssColor('--down'));
+  if (state.visibleSeries.up) drawLine(ctx, points, x, y, 'up_bps', cssColor('--up'));
   drawHover(ctx, points, x, y, pad, height);
   drawZoomSelection(ctx, pad, height);
 }
@@ -1115,8 +1135,8 @@ function drawStackedBars(ctx, points, x, y, width) {
   const slot = width / Math.max(1, points.length);
   const barWidth = Math.max(2, Math.min(18, slot * 0.7));
   points.forEach((point) => {
-    const down = Number(point.down_bytes) || 0;
-    const up = Number(point.up_bytes) || 0;
+    const down = state.visibleSeries.down ? Number(point.down_bytes) || 0 : 0;
+    const up = state.visibleSeries.up ? Number(point.up_bytes) || 0 : 0;
     const total = down + up;
     if (total <= 0) return;
     const cx = x(point.ts);
@@ -1125,17 +1145,21 @@ function drawStackedBars(ctx, points, x, y, width) {
     const downY = y(down);
     const totalY = y(total);
 
-    ctx.fillStyle = cssColor('--down');
-    ctx.fillRect(left, downY, barWidth, baseY - downY);
-    ctx.fillStyle = cssColor('--up');
-    ctx.fillRect(left, totalY, barWidth, downY - totalY);
+    if (state.visibleSeries.down && down > 0) {
+      ctx.fillStyle = cssColor('--down');
+      ctx.fillRect(left, downY, barWidth, baseY - downY);
+    }
+    if (state.visibleSeries.up && up > 0) {
+      ctx.fillStyle = cssColor('--up');
+      ctx.fillRect(left, totalY, barWidth, downY - totalY);
+    }
   });
 }
 
 function drawBarHover(ctx, points, x, y, pad, height) {
   if (state.hoverIndex === null || !points[state.hoverIndex]) return;
   const point = points[state.hoverIndex];
-  const total = (Number(point.down_bytes) || 0) + (Number(point.up_bytes) || 0);
+  const total = visibleTrafficTotal(point, 'bytes');
   const px = x(point.ts);
   const topY = y(total);
 
@@ -1216,8 +1240,8 @@ function drawHover(ctx, points, x, y, pad, height) {
 
   const point = points[state.hoverIndex];
   const px = x(point.ts);
-  const downY = y(point.down_bps);
-  const upY = y(point.up_bps);
+  const downY = state.visibleSeries.down ? y(point.down_bps) : null;
+  const upY = state.visibleSeries.up ? y(point.up_bps) : null;
 
   ctx.save();
   ctx.strokeStyle = 'rgba(45, 36, 29, 0.3)';
@@ -1228,8 +1252,8 @@ function drawHover(ctx, points, x, y, pad, height) {
   ctx.lineTo(px, pad.top + height);
   ctx.stroke();
   ctx.setLineDash([]);
-  drawPoint(ctx, px, downY, cssColor('--down'));
-  drawPoint(ctx, px, upY, cssColor('--up'));
+  if (downY !== null) drawPoint(ctx, px, downY, cssColor('--down'));
+  if (upY !== null) drawPoint(ctx, px, upY, cssColor('--up'));
   ctx.restore();
 }
 
@@ -1302,22 +1326,22 @@ function showChartTooltip(point) {
   const { pad, width, height, maxY, minT, maxT, mode, yMode } = state.chartGeometry;
   const x = pad.left + ((point.ts - minT) / Math.max(1, maxT - minT)) * width;
   const dailyBars = mode === 'daily-bars';
-  const totalBytes = (Number(point.down_bytes) || 0) + (Number(point.up_bytes) || 0);
-  const downY = chartY(point.down_bps, maxY, pad, height, yMode);
-  const upY = chartY(point.up_bps, maxY, pad, height, yMode);
+  const totalBytes = visibleTrafficTotal(point, 'bytes');
+  const downY = state.visibleSeries.down ? chartY(point.down_bps, maxY, pad, height, yMode) : Infinity;
+  const upY = state.visibleSeries.up ? chartY(point.up_bps, maxY, pad, height, yMode) : Infinity;
   const barY = chartY(totalBytes, maxY, pad, height, yMode);
   const y = dailyBars ? barY : Math.min(downY, upY);
 
   els.chartTooltip.innerHTML = `
     <div class="tooltip-time">${escapeHtml(formatTooltipTime(point.ts))}</div>
-    <div class="tooltip-row">
+    ${state.visibleSeries.down ? `<div class="tooltip-row">
       <span class="tooltip-label down">${escapeHtml(t('down'))}</span>
       <span class="tooltip-value">${escapeHtml(dailyBars ? formatBytes(point.down_bytes) : formatRate(point.down_bps))}</span>
-    </div>
-    <div class="tooltip-row">
+    </div>` : ''}
+    ${state.visibleSeries.up ? `<div class="tooltip-row">
       <span class="tooltip-label up">${escapeHtml(t('up'))}</span>
       <span class="tooltip-value">${escapeHtml(dailyBars ? formatBytes(point.up_bytes) : formatRate(point.up_bps))}</span>
-    </div>
+    </div>` : ''}
   `;
   els.chartTooltip.classList.add('show');
 
@@ -1360,6 +1384,18 @@ els.chartScaleControl.addEventListener('click', (event) => {
   state.chartScale = button.dataset.scale === 'linear' ? 'linear' : 'log';
   saveChartScalePreference();
   syncChartScaleControl();
+  renderChart();
+});
+
+els.legend.addEventListener('click', (event) => {
+  const button = event.target.closest('.legend-toggle[data-series]');
+  if (!button) return;
+  const series = button.dataset.series;
+  if (!['down', 'up'].includes(series)) return;
+  const visibleCount = Number(state.visibleSeries.down) + Number(state.visibleSeries.up);
+  if (state.visibleSeries[series] && visibleCount === 1) return;
+  state.visibleSeries[series] = !state.visibleSeries[series];
+  hideChartTooltip();
   renderChart();
 });
 

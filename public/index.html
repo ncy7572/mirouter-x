@@ -97,18 +97,19 @@
                 <p id="chartSubtitle">Downstream and upstream throughput</p>
               </div>
               <div class="range-tools">
-                <button class="zoom-out-button" id="zoomOutButton" type="button" hidden data-i18n="zoomOut">Reset</button>
-                <div class="scale-toggle" id="chartScaleControl" role="group" aria-label="Chart Y scale">
-                  <button data-scale="log" type="button" class="active" data-i18n="scaleLog">Log</button>
-                  <button data-scale="linear" type="button" data-i18n="scaleLinear">Linear</button>
-                </div>
-                <div class="segmented" id="rangeControl">
-                  <button data-range="15m" class="active">15m</button>
-                  <button data-range="1h">1h</button>
-                  <button data-range="1d">1d</button>
-                  <button data-range="7d">7d</button>
-                  <button data-range="30d">30d</button>
-                  <button data-range="custom" data-i18n="timeRange">Time range</button>
+                <div class="chart-controls-row">
+                  <div class="scale-toggle" id="chartScaleControl" role="group" aria-label="Chart Y scale">
+                    <button data-scale="log" type="button" class="active" data-i18n="scaleLog">Log</button>
+                    <button data-scale="linear" type="button" data-i18n="scaleLinear">Linear</button>
+                  </div>
+                  <div class="segmented" id="rangeControl">
+                    <button data-range="15m" class="active">15m</button>
+                    <button data-range="1h">1h</button>
+                    <button data-range="1d">1d</button>
+                    <button data-range="7d">7d</button>
+                    <button data-range="30d">30d</button>
+                    <button data-range="custom" data-i18n="timeRange">Time range</button>
+                  </div>
                 </div>
                 <div class="custom-range" id="customRange" hidden>
                   <input id="customFrom" type="datetime-local" aria-label="Start time" data-i18n-aria-label="startTime">
@@ -118,13 +119,18 @@
               </div>
             </div>
             <div class="chart-wrap">
+              <button class="zoom-out-button" id="zoomOutButton" type="button" hidden data-i18n="zoomOut">Reset</button>
               <canvas id="trafficChart" tabindex="0" aria-label="Traffic chart"></canvas>
               <div class="empty-chart" id="emptyChart" data-i18n="waitingSamples">Waiting for traffic samples</div>
               <div class="chart-tooltip" id="chartTooltip" role="status" aria-live="polite"></div>
             </div>
             <div class="legend">
-              <span><i class="down"></i><span data-i18n="down">Down</span></span>
-              <span><i class="up"></i><span data-i18n="up">Up</span></span>
+              <button class="legend-toggle" type="button" data-series="down" aria-pressed="true">
+                <i class="down"></i><span data-i18n="down">Down</span>
+              </button>
+              <button class="legend-toggle" type="button" data-series="up" aria-pressed="true">
+                <i class="up"></i><span data-i18n="up">Up</span>
+              </button>
               <span id="bucketInfo"></span>
             </div>
             <div class="usage-grid">

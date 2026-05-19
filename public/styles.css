@@ -611,7 +611,18 @@ h2 {
   gap: 8px;
 }
 
+.chart-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .zoom-out-button {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  z-index: 3;
   height: 32px;
   padding: 0 12px;
   border: 1px solid var(--accent);
@@ -627,6 +638,10 @@ h2 {
 .zoom-out-button:hover {
   background: var(--accent);
   color: var(--surface);
+}
+
+.zoom-out-button[hidden] {
+  display: none;
 }
 
 .scale-toggle,
@@ -847,6 +862,30 @@ canvas {
   font-size: 12px;
 }
 
+.legend-toggle {
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.legend-toggle[aria-pressed="true"] {
+  color: var(--ink);
+}
+
+.legend-toggle[aria-pressed="false"] {
+  opacity: 0.42;
+}
+
+.legend-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
 .legend i {
   display: inline-block;
   width: 10px;
@@ -1041,6 +1080,10 @@ canvas {
   }
 
   .segmented {
+    justify-content: flex-start;
+  }
+
+  .chart-controls-row {
     justify-content: flex-start;
   }
 
