@@ -49,9 +49,49 @@ if (JSON.stringify(summary).includes('secret')) {
   throw new Error('Sensitive Wi-Fi password was persisted');
 }
 
+testSparseWrites();
+
 await testRouterClientPasswordLogin();
 
 console.log('Smoke test passed');
+
+function testSparseWrites() {
+  const snapshot = (downspeed) => ({
+    status: { wan: {}, cpu: {}, mem: {}, count: { online: 1, all: 1 }, hardware: {} },
+    devices: {
+      list: [{
+        mac: 'AA:BB:CC:DD:EE:02', name: 'Phone', oname: 'Phone', type: 1, isap: 0, parent: '',
+        online: 1, ip: [{ active: 1, ip: '192.168.31.20' }],
+        statistics: { downspeed, upspeed: '0', online: '10' }
+      }]
+    },
+    topo: {}, wan: {}, wifi: {}
+  });
+  const countSamples = () => store.db
+    .prepare("SELECT COUNT(*) AS n FROM client_samples WHERE mac = 'AA:BB:CC:DD:EE:02'").get().n;
+
+  // identical snapshots must not write duplicate client_samples rows
+  for (let i = 0; i < 3; i++) store.queueSnapshot(snapshot('500'));
+  store.flush();
+  if (countSamples() !== 1) throw new Error('Sparse write dedup failed');
+
+  // sparse rows roll up with time-weighted averages clipped to the minute
+  const now = Math.floor(Date.now() / 1000);
+  const S = Math.floor(now / 3600) * 3600 - 300;
+  const ins = store.db.prepare(
+    'INSERT INTO client_samples (ts, mac, down_bps, up_bps, online_seconds, active) VALUES (?,?,?,?,?,?)'
+  );
+  ins.run(S + 10, 'AA:BB:CC:DD:EE:03', 100, 0, 0, 1);
+  ins.run(S + 70, 'AA:BB:CC:DD:EE:03', 0, 0, 0, 1);
+  store.setMeta('rl_c_1m', '0');
+  store.rollup();
+  const rolled = store.db
+    .prepare("SELECT down_avg, down_bytes FROM client_samples_1m WHERE mac = 'AA:BB:CC:DD:EE:03' AND ts = ?")
+    .get(S);
+  if (!rolled || Math.round(rolled.down_avg) !== 100 || Math.round(rolled.down_bytes) !== 5000) {
+    throw new Error('Time-weighted rollup failed');
+  }
+}
 
 async function testRouterClientPasswordLogin() {
   let loginCount = 0;

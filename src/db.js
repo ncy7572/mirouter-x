@@ -16,6 +16,8 @@ export class Store {
     this.db.exec('PRAGMA synchronous = NORMAL');
     this.db.exec('PRAGMA temp_store = MEMORY');
     this._writeQueue = [];
+    this._clientSampleCache = new Map();
+    this._clientInfoCache = new Map();
     this.prepareSchema();
     this.prepareStatements();
   }
@@ -166,8 +168,6 @@ export class Store {
       );
 
       CREATE INDEX IF NOT EXISTS idx_client_samples_mac_ts ON client_samples(mac, ts);
-      CREATE INDEX IF NOT EXISTS idx_client_samples_ts ON client_samples(ts);
-      CREATE INDEX IF NOT EXISTS idx_samples_ts ON samples(ts);
       CREATE INDEX IF NOT EXISTS idx_client_samples_1m_mac_ts ON client_samples_1m(mac, ts);
       CREATE INDEX IF NOT EXISTS idx_client_samples_1h_mac_ts ON client_samples_1h(mac, ts);
       CREATE INDEX IF NOT EXISTS idx_client_samples_1d_mac_ts ON client_samples_1d(mac, ts);
@@ -236,6 +236,8 @@ export class Store {
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
+      this._clientSampleCache.clear();
+      this._clientInfoCache.clear();
       this._writeQueue.unshift(...batch);
       throw error;
     }
@@ -259,24 +261,41 @@ export class Store {
       if (!client.mac) continue;
       const ip = client.ip?.find((item) => item.active)?.ip || client.ip?.[0]?.ip || '';
       const stats = client.statistics ?? {};
-      this.upsertClient.run(
-        client.mac,
-        client.name || client.oname || client.mac,
-        client.oname || '',
-        ip,
-        asNumber(client.type),
-        asNumber(client.isap),
-        client.parent || '',
-        ts
-      );
-      this.insertClientSample.run(
-        ts,
-        client.mac,
-        asNumber(stats.downspeed),
-        asNumber(stats.upspeed),
-        asNumber(stats.online),
-        asNumber(client.online) ? 1 : 0
-      );
+      const downBps = asNumber(stats.downspeed);
+      const upBps = asNumber(stats.upspeed);
+      const onlineSeconds = asNumber(stats.online);
+      const active = asNumber(client.online) ? 1 : 0;
+
+      // clients rows change rarely; skip the upsert unless identity fields
+      // changed or last_seen_ts is due for a refresh.
+      const name = client.name || client.oname || client.mac;
+      const infoKey = [name, client.oname || '', ip, asNumber(client.type), asNumber(client.isap), client.parent || ''].join('\n');
+      const infoCached = this._clientInfoCache.get(client.mac);
+      if (!infoCached || infoCached.key !== infoKey || ts - infoCached.ts >= CLIENT_INFO_REFRESH_SECONDS) {
+        this.upsertClient.run(
+          client.mac,
+          name,
+          client.oname || '',
+          ip,
+          asNumber(client.type),
+          asNumber(client.isap),
+          client.parent || '',
+          ts
+        );
+        this._clientInfoCache.set(client.mac, { key: infoKey, ts });
+      }
+
+      // Skip samples whose value is unchanged since the last written row;
+      // write one carry row per minute so per-minute rollups stay populated.
+      // Value-held-until-next-sample semantics keep LEAD-based byte
+      // integration exact regardless of row spacing.
+      const sampleKey = `${downBps},${upBps},${active}`;
+      const minute = Math.floor(ts / 60);
+      const sampleCached = this._clientSampleCache.get(client.mac);
+      if (!sampleCached || sampleCached.key !== sampleKey || sampleCached.minute !== minute) {
+        this.insertClientSample.run(ts, client.mac, downBps, upBps, onlineSeconds, active);
+        this._clientSampleCache.set(client.mac, { key: sampleKey, minute });
+      }
     }
   }
 
@@ -339,15 +358,28 @@ export class Store {
     }
 
     if (curMin > lastC1m) {
+      // client_samples is sparse (written on change), so averages must be
+      // weighted by how long each value was held, clipped to the minute bucket.
       this.db.prepare(`
+        WITH ranged AS (
+          SELECT ts, mac, down_bps, up_bps,
+                 LEAD(ts) OVER (PARTITION BY mac ORDER BY ts) AS next_ts
+          FROM client_samples
+          WHERE ts >= ? AND ts < ?
+        ),
+        weighted AS (
+          SELECT CAST(ts / 60 AS INTEGER) * 60 AS bucket, mac, down_bps, up_bps,
+                 MAX(0, MIN(COALESCE(next_ts, CAST(ts / 60 AS INTEGER) * 60 + 60), CAST(ts / 60 AS INTEGER) * 60 + 60) - ts) AS w
+          FROM ranged
+        )
         INSERT OR REPLACE INTO client_samples_1m
           (ts, mac, down_avg, down_min, down_max, up_avg, up_min, up_max, down_bytes, up_bytes, n)
-        SELECT CAST(ts / 60 AS INTEGER) * 60, mac,
-          AVG(down_bps), MIN(down_bps), MAX(down_bps),
-          AVG(up_bps), MIN(up_bps), MAX(up_bps),
-          AVG(down_bps) * 60, AVG(up_bps) * 60, COUNT(*)
-        FROM client_samples WHERE ts >= ? AND ts < ?
-        GROUP BY CAST(ts / 60 AS INTEGER), mac
+        SELECT bucket, mac,
+          SUM(down_bps * w) / SUM(w), MIN(down_bps), MAX(down_bps),
+          SUM(up_bps * w) / SUM(w), MIN(up_bps), MAX(up_bps),
+          SUM(down_bps * w), SUM(up_bps * w), COUNT(*)
+        FROM weighted
+        GROUP BY bucket, mac
       `).run(lastC1m, curMin);
       this.setMeta('rl_c_1m', String(curMin));
     }
@@ -415,15 +447,17 @@ export class Store {
   summary() {
     const latest = this.db.prepare('SELECT * FROM samples ORDER BY ts DESC LIMIT 1').get() ?? null;
     const lastSnapshot = this.getMeta('last_snapshot');
+    const recentCutoff = Math.floor(Date.now() / 1000) - RECENT_SAMPLE_WINDOW_SECONDS;
     const topClients = this.db.prepare(`
       SELECT c.mac, c.name, c.oname, c.ip, c.parent, c.type, c.is_ap,
              cs.down_bps, cs.up_bps, cs.online_seconds, cs.active
-      FROM client_samples cs
-      JOIN clients c ON c.mac = cs.mac
-      WHERE cs.ts = (SELECT MAX(ts) FROM client_samples)
+      FROM clients c
+      JOIN client_samples cs
+        ON cs.mac = c.mac
+       AND cs.ts = (SELECT MAX(t.ts) FROM client_samples t WHERE t.mac = c.mac AND t.ts > ?)
       ORDER BY (cs.down_bps + cs.up_bps) DESC
       LIMIT 12
-    `).all();
+    `).all(recentCutoff);
     const now = Math.floor(Date.now() / 1000);
     const count1m = this.db.prepare('SELECT COUNT(*) AS n FROM samples_1m WHERE ts >= ?');
     const count1h = this.db.prepare('SELECT COUNT(*) AS n FROM samples_1h WHERE ts >= ?');
@@ -438,6 +472,7 @@ export class Store {
   }
 
   clients() {
+    const recentCutoff = Math.floor(Date.now() / 1000) - RECENT_SAMPLE_WINDOW_SECONDS;
     return this.db.prepare(`
       SELECT c.mac, c.name, c.oname, c.ip, c.parent, c.type, c.is_ap, c.last_seen_ts,
              COALESCE(last.down_bps, 0) AS down_bps,
@@ -446,10 +481,10 @@ export class Store {
       FROM clients c
       LEFT JOIN client_samples last
         ON last.mac = c.mac
-       AND last.ts = (SELECT MAX(ts) FROM client_samples)
+       AND last.ts = (SELECT MAX(t.ts) FROM client_samples t WHERE t.mac = c.mac AND t.ts > ?)
       ORDER BY active DESC, (down_bps + up_bps) DESC, name COLLATE NOCASE
       LIMIT 500
-    `).all();
+    `).all(recentCutoff);
   }
 
   series({ from, to, maxPoints = 900, mac = '' }) {
@@ -688,6 +723,10 @@ export class Store {
 
 const ROLLUP_CHAIN = ['1d', '1h', '1m'];
 const MIN_TIER_POINTS = 10;
+const CLIENT_INFO_REFRESH_SECONDS = 60;
+// client_samples rows are written on change (plus one carry row per minute),
+// so "latest" lookups only scan a short recent window instead of MAX(ts).
+const RECENT_SAMPLE_WINDOW_SECONDS = 120;
 
 function seriesTier(span, maxPoints) {
   if (span < 1800) return { tier: 'raw', bucket: Math.max(1, Math.ceil(span / maxPoints)) };
