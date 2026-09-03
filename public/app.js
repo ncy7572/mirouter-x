@@ -20,6 +20,12 @@ const state = {
   liveUpdates: true,
   frontendRefreshSeconds: 10,
   chartScale: 'log',
+  sseState: 'connecting',
+  eventSource: null,
+  monthCursor: '',
+  monthly: null,
+  monthGeometry: null,
+  monthByDay: new Map(),
   visibleSeries: {
     down: true,
     up: true
@@ -72,7 +78,20 @@ const els = {
   usageUpLegend: document.querySelector('#usageUpLegend'),
   usageDownTotal: document.querySelector('#usageDownTotal'),
   usageUpTotal: document.querySelector('#usageUpTotal'),
-  pieTooltip: document.querySelector('#pieTooltip')
+  pieTooltip: document.querySelector('#pieTooltip'),
+  monthPrev: document.querySelector('#monthPrev'),
+  monthNext: document.querySelector('#monthNext'),
+  monthLabel: document.querySelector('#monthLabel'),
+  monthDownTotal: document.querySelector('#monthDownTotal'),
+  monthUpTotal: document.querySelector('#monthUpTotal'),
+  monthChart: document.querySelector('#monthChart'),
+  monthEmpty: document.querySelector('#monthEmpty'),
+  monthTooltip: document.querySelector('#monthTooltip'),
+  monthTopList: document.querySelector('#monthTopList'),
+  tokenOverlay: document.querySelector('#tokenOverlay'),
+  tokenForm: document.querySelector('#tokenForm'),
+  tokenInput: document.querySelector('#tokenInput'),
+  tokenError: document.querySelector('#tokenError')
 };
 
 restoreRangePreference();
@@ -142,7 +161,20 @@ const translations = {
     detailDataCleaned: 'Detail data not available — raw samples are kept for {days} days (MIROUTER_RETENTION_DET_DAYS)',
     notEnoughData: 'Not enough data: {current} / {required} points',
     wifi: 'Wi-Fi',
-    xiaomiRouter: 'Xiaomi Router'
+    xiaomiRouter: 'Xiaomi Router',
+    monthlyUsage: 'Monthly usage',
+    thisMonth: 'This month',
+    prevMonth: 'Previous month',
+    nextMonth: 'Next month',
+    topClients: 'Top clients',
+    noMonthData: 'No data for this month',
+    dailyUsage: 'Daily usage chart',
+    disconnected: 'Disconnected',
+    tokenRequired: 'Access token required',
+    tokenPrompt: 'Enter the access token to continue.',
+    tokenPlaceholder: 'Access token',
+    tokenSubmit: 'Confirm',
+    tokenInvalid: 'Invalid token, please try again'
   },
   zh: {
     accumulated: '累计',
@@ -202,7 +234,20 @@ const translations = {
     detailDataCleaned: '详细数据不可用 — 原始样本保留 {days} 天（MIROUTER_RETENTION_DET_DAYS）',
     notEnoughData: '数据不足：{current} / {required} 个数据点',
     wifi: 'Wi-Fi',
-    xiaomiRouter: '小米路由器'
+    xiaomiRouter: '小米路由器',
+    monthlyUsage: '月度用量',
+    thisMonth: '本月',
+    prevMonth: '上一月',
+    nextMonth: '下一月',
+    topClients: '客户端排行',
+    noMonthData: '该月暂无数据',
+    dailyUsage: '每日用量图表',
+    disconnected: '连接断开',
+    tokenRequired: '需要访问令牌',
+    tokenPrompt: '请输入访问令牌以继续。',
+    tokenPlaceholder: '访问令牌',
+    tokenSubmit: '确认',
+    tokenInvalid: '令牌无效，请重试'
   }
 };
 const themeNames = {
@@ -401,8 +446,39 @@ function escapeHtml(text) {
   })[char]);
 }
 
-async function getJson(path, options) {
-  const response = await fetch(path, options);
+function getToken() {
+  return localStorage.getItem('mirouter_token') || '';
+}
+
+let tokenWaiter = null;
+let tokenResolve = null;
+
+function requestToken(invalid = false) {
+  if (tokenWaiter) {
+    if (invalid) els.tokenError.hidden = false;
+    return tokenWaiter;
+  }
+  els.tokenError.hidden = !invalid;
+  els.tokenOverlay.hidden = false;
+  els.tokenInput.value = '';
+  setTimeout(() => els.tokenInput.focus(), 0);
+  tokenWaiter = new Promise((resolve) => {
+    tokenResolve = resolve;
+  });
+  return tokenWaiter;
+}
+
+async function getJson(path, options = {}) {
+  const token = getToken();
+  const headers = { ...(options.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(path, { ...options, headers });
+  if (response.status === 401) {
+    const hadToken = Boolean(token);
+    localStorage.removeItem('mirouter_token');
+    await requestToken(hadToken);
+    return getJson(path, options);
+  }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
 }
@@ -662,7 +738,13 @@ function renderSummary() {
   els.collectorStatus.classList.remove('ok', 'error');
   els.collectorStatus.classList.toggle('updating', state.chartLoading);
   els.collectorStatus.setAttribute('aria-pressed', String(state.liveUpdates));
-  if (!settings.hasToken && !settings.canRefreshToken) {
+  if (state.liveUpdates && state.sseState === 'error') {
+    els.collectorStatusText.textContent = t('disconnected');
+    els.collectorStatus.classList.add('error');
+    els.collectorStatus.title = collector.lastError
+      ? `${t('disconnected')}: ${collector.lastError}`
+      : t('disconnected');
+  } else if (!settings.hasToken && !settings.canRefreshToken) {
     els.collectorStatusText.textContent = t('noPassword');
     els.collectorStatus.classList.add('error');
     els.collectorStatus.title = state.liveUpdates ? t('liveMode') : t('staticMode');
@@ -690,7 +772,8 @@ function renderSummary() {
 }
 
 function scheduleRefresh() {
-  if (!state.liveUpdates) {
+  const shouldPoll = state.liveUpdates && state.sseState !== 'open';
+  if (!shouldPoll) {
     if (state.refreshTimer) clearInterval(state.refreshTimer.id);
     state.refreshTimer = null;
     return;
@@ -702,10 +785,259 @@ function scheduleRefresh() {
   state.refreshTimer = {
     refreshMs,
     id: setInterval(() => {
+      if (state.sseState === 'open') return;
       if (state.updatePromise || state.chartLoading) return;
       loadAll().catch(() => {});
     }, refreshMs)
   };
+}
+
+function disconnectEvents() {
+  if (state.eventSource) {
+    state.eventSource.close();
+    state.eventSource = null;
+  }
+  state.sseState = 'connecting';
+}
+
+function connectEvents() {
+  disconnectEvents();
+  if (!state.liveUpdates) {
+    scheduleRefresh();
+    return;
+  }
+  const token = getToken();
+  const url = token ? `/api/events?token=${encodeURIComponent(token)}` : '/api/events';
+  const source = new EventSource(url);
+  state.eventSource = source;
+  source.addEventListener('snapshot', (event) => {
+    if (state.eventSource !== source) return;
+    try {
+      handleSnapshot(JSON.parse(event.data));
+    } catch {
+      // ignore malformed payloads
+    }
+  });
+  source.onopen = () => {
+    if (state.eventSource !== source) return;
+    state.sseState = 'open';
+    scheduleRefresh();
+    if (state.summary) renderSummary();
+  };
+  source.onerror = () => {
+    if (state.eventSource !== source) return;
+    state.sseState = 'error';
+    scheduleRefresh();
+    if (state.summary) renderSummary();
+  };
+}
+
+function handleSnapshot(summary) {
+  state.summary = summary;
+  renderSummary();
+  scheduleLiveRefresh();
+  maybeRefreshMonthlyLive();
+}
+
+let liveRefreshAt = 0;
+let liveRefreshTimer = null;
+
+function scheduleLiveRefresh() {
+  const run = async () => {
+    liveRefreshAt = Date.now();
+    try {
+      const clients = await getJson('/api/clients');
+      state.clients = clients.clients ?? [];
+      renderClients();
+      if (!isFixedRange()) await loadSeries();
+    } catch {
+      // next snapshot or fallback poll will retry
+    }
+  };
+  if (liveRefreshTimer) return;
+  const wait = 1000 - (Date.now() - liveRefreshAt);
+  if (wait <= 0) {
+    run();
+    return;
+  }
+  liveRefreshTimer = setTimeout(() => {
+    liveRefreshTimer = null;
+    run();
+  }, wait);
+}
+
+let monthLiveRefreshAt = 0;
+
+function maybeRefreshMonthlyLive() {
+  if (state.monthCursor !== currentMonthKey()) return;
+  if (Date.now() - monthLiveRefreshAt < 30000) return;
+  monthLiveRefreshAt = Date.now();
+  loadMonthly().catch(() => {});
+}
+
+function currentMonthKey() {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function shiftMonthCursor(delta) {
+  const [year, month] = state.monthCursor.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1 + delta, 1));
+  const next = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  if (delta > 0 && next > currentMonthKey()) return;
+  state.monthCursor = next;
+  hideMonthTooltip();
+  loadMonthly().catch(() => {});
+}
+
+async function loadMonthly() {
+  const data = await getJson(`/api/monthly?month=${state.monthCursor}`);
+  if (data?.month && data.month !== state.monthCursor) return;
+  state.monthly = data;
+  renderMonthly();
+}
+
+function renderMonthly() {
+  const data = state.monthly;
+  const isCurrent = state.monthCursor === currentMonthKey();
+  els.monthLabel.textContent = isCurrent ? t('thisMonth') : state.monthCursor;
+  els.monthLabel.title = state.monthCursor;
+  els.monthNext.disabled = isCurrent;
+  els.monthDownTotal.textContent = `↓ ${data ? formatBytes(data.totals?.down_bytes) : '--'}`;
+  els.monthUpTotal.textContent = `↑ ${data ? formatBytes(data.totals?.up_bytes) : '--'}`;
+
+  const clients = (data?.clients ?? []).slice(0, 5);
+  els.monthTopList.innerHTML = clients.length
+    ? clients.map((client, index) => {
+        const total = (Number(client.down_bytes) || 0) + (Number(client.up_bytes) || 0);
+        return `
+          <div class="month-top-row" title="${escapeHtml(client.mac)}">
+            <span class="month-top-rank">${index + 1}</span>
+            <span class="month-top-name">${escapeHtml(client.name || client.mac)}</span>
+            <span class="month-top-value">${escapeHtml(formatBytes(total))}</span>
+          </div>
+        `;
+      }).join('')
+    : `<div class="month-top-empty">${escapeHtml(t('noMonthData'))}</div>`;
+
+  renderMonthChart();
+}
+
+function formatMonthDay(ts) {
+  return new Date(ts * 1000).toLocaleString(state.lang === 'zh' ? 'zh-CN' : 'en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC'
+  });
+}
+
+function renderMonthChart() {
+  const canvas = els.monthChart;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+  canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, rect.width, rect.height);
+
+  const [year, month] = state.monthCursor.split('-').map(Number);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const days = state.monthly?.days ?? [];
+  state.monthByDay = new Map();
+  for (const day of days) {
+    state.monthByDay.set(new Date(day.ts * 1000).getUTCDate(), day);
+  }
+  els.monthEmpty.classList.toggle('show', days.length === 0);
+
+  const pad = { top: 6, right: 6, bottom: 16, left: 40 };
+  const width = rect.width - pad.left - pad.right;
+  const height = rect.height - pad.top - pad.bottom;
+  const maxY = Math.max(1024, ...days.map((day) => (Number(day.down_bytes) || 0) + (Number(day.up_bytes) || 0)));
+  state.monthGeometry = { pad, width, height, daysInMonth, maxY };
+
+  drawGrid(ctx, rect, pad, width, height);
+
+  const scale = bytesAxisScale(maxY);
+  ctx.fillStyle = cssColor('--muted');
+  ctx.font = '10px Inter, system-ui, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  const tickCount = height < 56 ? 3 : 5;
+  for (let i = 0; i < tickCount; i += 1) {
+    const value = (maxY / (tickCount - 1)) * (tickCount - 1 - i);
+    ctx.fillText(formatAxisTick(value, scale.divisor), pad.left - 5, pad.top + (height / (tickCount - 1)) * i);
+  }
+
+  const slot = width / daysInMonth;
+  const barWidth = Math.max(2, Math.min(20, slot * 0.65));
+  const baseY = pad.top + height;
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const entry = state.monthByDay.get(day);
+    if (!entry) continue;
+    const down = Number(entry.down_bytes) || 0;
+    const up = Number(entry.up_bytes) || 0;
+    if (down + up <= 0) continue;
+    const cx = pad.left + slot * (day - 0.5);
+    const left = cx - barWidth / 2;
+    const downHeight = (down / maxY) * height;
+    const upHeight = (up / maxY) * height;
+    if (down > 0) {
+      ctx.fillStyle = cssColor('--down');
+      ctx.fillRect(left, baseY - downHeight, barWidth, downHeight);
+    }
+    if (up > 0) {
+      ctx.fillStyle = cssColor('--up');
+      ctx.fillRect(left, baseY - downHeight - upHeight, barWidth, upHeight);
+    }
+  }
+
+  const step = Math.max(1, Math.ceil(daysInMonth / Math.max(1, Math.floor(width / 24))));
+  ctx.fillStyle = cssColor('--muted');
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (let day = 1; day <= daysInMonth; day += step) {
+    ctx.fillText(String(day), pad.left + slot * (day - 0.5), pad.top + height + 4);
+  }
+}
+
+function showMonthTooltip(day, entry) {
+  const geo = state.monthGeometry;
+  if (!geo) return;
+  const down = Number(entry?.down_bytes) || 0;
+  const up = Number(entry?.up_bytes) || 0;
+  const [year, month] = state.monthCursor.split('-').map(Number);
+  const ts = Date.UTC(year, month - 1, day) / 1000;
+  els.monthTooltip.innerHTML = `
+    <div class="tooltip-time">${escapeHtml(formatMonthDay(ts))}</div>
+    <div class="tooltip-row">
+      <span class="tooltip-label down">${escapeHtml(t('down'))}</span>
+      <span class="tooltip-value">${escapeHtml(formatBytes(down))}</span>
+    </div>
+    <div class="tooltip-row">
+      <span class="tooltip-label up">${escapeHtml(t('up'))}</span>
+      <span class="tooltip-value">${escapeHtml(formatBytes(up))}</span>
+    </div>
+    <div class="tooltip-row">
+      <span class="tooltip-label">${escapeHtml(t('total'))}</span>
+      <span class="tooltip-value">${escapeHtml(formatBytes(down + up))}</span>
+    </div>
+  `;
+  els.monthTooltip.classList.add('show');
+
+  const wrapRect = els.monthChart.parentElement.getBoundingClientRect();
+  const tooltipRect = els.monthTooltip.getBoundingClientRect();
+  const slot = geo.width / geo.daysInMonth;
+  const cx = geo.pad.left + slot * (day - 0.5);
+  const left = cx + 14 + tooltipRect.width > wrapRect.width ? cx - tooltipRect.width - 14 : cx + 14;
+  const top = Math.max(4, Math.min(wrapRect.height - tooltipRect.height - 4, 8));
+  els.monthTooltip.style.left = `${left}px`;
+  els.monthTooltip.style.top = `${top}px`;
+}
+
+function hideMonthTooltip() {
+  els.monthTooltip.classList.remove('show');
 }
 
 function clientRowInnerHtml(name, meta, upRate, downRate, upTotal, downTotal, volume, maxVolume, showAccumulated) {
@@ -1453,6 +1785,7 @@ els.langToggle.addEventListener('click', () => {
   renderClients();
   renderChart();
   renderUsageCharts();
+  renderMonthly();
   syncWorkspaceHeights();
 });
 els.themeSelect.addEventListener('change', () => {
@@ -1461,6 +1794,7 @@ els.themeSelect.addEventListener('change', () => {
   applyTheme();
   renderChart();
   renderUsageCharts();
+  renderMonthChart();
   syncWorkspaceHeights();
 });
 els.refreshRateSlider.addEventListener('input', () => {
@@ -1479,9 +1813,49 @@ els.refreshButton.addEventListener('click', async () => {
 els.collectorStatus.addEventListener('click', () => {
   state.liveUpdates = !state.liveUpdates;
   saveLiveUpdatePreference();
+  if (state.liveUpdates) connectEvents();
+  else disconnectEvents();
   if (state.summary) {
     renderSummary();
   }
+  scheduleRefresh();
+});
+
+els.monthPrev.addEventListener('click', () => shiftMonthCursor(-1));
+els.monthNext.addEventListener('click', () => shiftMonthCursor(1));
+
+els.monthChart.addEventListener('mousemove', (event) => {
+  const geo = state.monthGeometry;
+  if (!geo) {
+    hideMonthTooltip();
+    return;
+  }
+  const rect = els.monthChart.getBoundingClientRect();
+  const mouseX = event.clientX - rect.left;
+  if (mouseX < geo.pad.left || mouseX > geo.pad.left + geo.width) {
+    hideMonthTooltip();
+    return;
+  }
+  const day = Math.min(geo.daysInMonth, Math.max(1, Math.floor(((mouseX - geo.pad.left) / geo.width) * geo.daysInMonth) + 1));
+  showMonthTooltip(day, state.monthByDay.get(day));
+});
+els.monthChart.addEventListener('mouseleave', hideMonthTooltip);
+
+els.tokenForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const token = els.tokenInput.value.trim();
+  if (!token) {
+    els.tokenInput.focus();
+    return;
+  }
+  localStorage.setItem('mirouter_token', token);
+  els.tokenOverlay.hidden = true;
+  els.tokenError.hidden = true;
+  const resolve = tokenResolve;
+  tokenWaiter = null;
+  tokenResolve = null;
+  connectEvents();
+  if (resolve) resolve();
 });
 
 els.chart.addEventListener('mousedown', (event) => {
@@ -1562,8 +1936,10 @@ els.chart.addEventListener('blur', () => {
 
 window.addEventListener('resize', () => {
   hideChartTooltip();
+  hideMonthTooltip();
   renderChart();
   renderUsageCharts();
+  renderMonthChart();
   syncWorkspaceHeights();
 });
 
@@ -1629,9 +2005,12 @@ for (const canvas of [els.usageDownChart, els.usageUpChart]) {
   });
 }
 
+state.monthCursor = currentMonthKey();
+connectEvents();
 loadAll().catch((error) => {
   els.collectorStatusText.textContent = t('error');
   els.collectorStatus.classList.remove('updating');
   els.collectorStatus.classList.add('error');
   els.collectorStatus.title = error.message;
 });
+loadMonthly().catch(() => {});

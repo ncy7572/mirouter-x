@@ -49,6 +49,7 @@ if (JSON.stringify(summary).includes('secret')) {
   throw new Error('Sensitive Wi-Fi password was persisted');
 }
 
+testMonthly();
 testSparseWrites();
 
 await testRouterClientPasswordLogin();
@@ -90,6 +91,64 @@ function testSparseWrites() {
     .get(S);
   if (!rolled || Math.round(rolled.down_avg) !== 100 || Math.round(rolled.down_bytes) !== 5000) {
     throw new Error('Time-weighted rollup failed');
+  }
+}
+
+function testMonthly() {
+  const now = Math.floor(Date.now() / 1000);
+  const today = Math.floor(now / 86400) * 86400;
+  const d1 = today - 3 * 86400;
+  const d2 = today - 2 * 86400;
+
+  store.upsertClient.run('AA:BB:CC:DD:EE:02', 'Phone', 'Phone', '192.168.31.20', 1, 0, '', now);
+
+  const insDay = store.db.prepare('INSERT OR REPLACE INTO samples_1d (ts, down_bytes, up_bytes) VALUES (?, ?, ?)');
+  insDay.run(d1 - 86400, 9999, 9999);
+  insDay.run(d1, 1000, 100);
+  insDay.run(d2, 2000, 200);
+  const insHour = store.db.prepare('INSERT OR REPLACE INTO samples_1h (ts, down_bytes, up_bytes) VALUES (?, ?, ?)');
+  insHour.run(today + 3600, 300, 30);
+  insHour.run(today + 2 * 3600, 500, 50);
+
+  const insClientDay = store.db.prepare('INSERT OR REPLACE INTO client_samples_1d (ts, mac, down_bytes, up_bytes) VALUES (?, ?, ?, ?)');
+  insClientDay.run(d1, 'AA:BB:CC:DD:EE:01', 600, 60);
+  insClientDay.run(d2, 'AA:BB:CC:DD:EE:01', 700, 70);
+  insClientDay.run(d1, 'AA:BB:CC:DD:EE:02', 400, 40);
+  insClientDay.run(d1, 'AA:BB:CC:DD:EE:03', -50, 5);
+  const insClientHour = store.db.prepare('INSERT OR REPLACE INTO client_samples_1h (ts, mac, down_bytes, up_bytes) VALUES (?, ?, ?, ?)');
+  insClientHour.run(today + 3600, 'AA:BB:CC:DD:EE:01', 200, 20);
+
+  const { days, clients } = store.monthly(d1, today + 86399);
+
+  if (days.length !== 3) throw new Error('Monthly days count mismatch');
+  if (days[0].ts !== d1 || days[0].down_bytes !== 1000 || days[0].up_bytes !== 100) {
+    throw new Error('Monthly 1d aggregation failed');
+  }
+  if (days[1].ts !== d2 || days[1].down_bytes !== 2000 || days[1].up_bytes !== 200) {
+    throw new Error('Monthly 1d aggregation failed');
+  }
+  if (days[2].ts !== today || days[2].down_bytes !== 800 || days[2].up_bytes !== 80) {
+    throw new Error('Monthly current-day 1h fill failed');
+  }
+
+  if (clients.length !== 3) throw new Error('Monthly clients count mismatch');
+  const [laptop, phone, clamped] = clients;
+  if (laptop.mac !== 'AA:BB:CC:DD:EE:01' || laptop.name !== 'Laptop'
+    || laptop.down_bytes !== 1500 || laptop.up_bytes !== 150) {
+    throw new Error('Monthly client aggregation failed');
+  }
+  if (phone.mac !== 'AA:BB:CC:DD:EE:02' || phone.name !== 'Phone'
+    || phone.down_bytes !== 400 || phone.up_bytes !== 40) {
+    throw new Error('Monthly client aggregation failed');
+  }
+  if (clamped.mac !== 'AA:BB:CC:DD:EE:03' || clamped.name !== 'AA:BB:CC:DD:EE:03'
+    || clamped.down_bytes !== 0 || clamped.up_bytes !== 5) {
+    throw new Error('Monthly negative clamp or name fallback failed');
+  }
+
+  const pastOnly = store.monthly(d1, d1 + 86399);
+  if (pastOnly.days.length !== 1 || pastOnly.days[0].down_bytes !== 1000) {
+    throw new Error('Monthly completed-days-only range failed');
   }
 }
 

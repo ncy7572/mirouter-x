@@ -18,7 +18,9 @@ export class Store {
     this._writeQueue = [];
     this._clientSampleCache = new Map();
     this._clientInfoCache = new Map();
+    this._closed = false;
     this.prepareSchema();
+    this.db.exec('ANALYZE');
     this.prepareStatements();
   }
 
@@ -205,6 +207,11 @@ export class Store {
       (ts, mac, down_bps, up_bps, online_seconds, active)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
+    this.selectMeta = this.db.prepare('SELECT value FROM meta WHERE key = ?');
+    this.upsertMeta = this.db.prepare(`
+      INSERT INTO meta (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `);
   }
 
   queueSnapshot(snapshot) {
@@ -222,10 +229,7 @@ export class Store {
         this._writeSample(snapshot, ts);
       }
       const { snapshot: last, ts: lastTs } = batch[batch.length - 1];
-      this.db.prepare(`
-        INSERT INTO meta (key, value) VALUES (?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-      `).run('last_snapshot', JSON.stringify({
+      this.upsertMeta.run('last_snapshot', JSON.stringify({
         ts: lastTs,
         router: last.status.hardware,
         counts: last.status.count,
@@ -313,13 +317,21 @@ export class Store {
     const lastC1d = Number(this.getMeta('rl_c_1d')) || 0;
 
     if (curMin > last1m) {
+      // Byte totals come from the WAN counters when they are monotonic
+      // within the minute (uptime guard catches router reboots resetting
+      // the counters); otherwise fall back to average-rate estimation.
       this.db.prepare(`
         INSERT OR REPLACE INTO samples_1m
           (ts, down_avg, down_min, down_max, up_avg, up_min, up_max, down_bytes, up_bytes, online_avg, cpu_avg, mem_avg, n)
         SELECT CAST(ts / 60 AS INTEGER) * 60,
           AVG(wan_down_bps), MIN(wan_down_bps), MAX(wan_down_bps),
           AVG(wan_up_bps), MIN(wan_up_bps), MAX(wan_up_bps),
-          AVG(wan_down_bps) * 60, AVG(wan_up_bps) * 60,
+          CASE WHEN MAX(wan_download_total) > MIN(wan_download_total) AND MAX(uptime_seconds) >= MIN(uptime_seconds)
+               THEN MAX(wan_download_total) - MIN(wan_download_total)
+               ELSE AVG(wan_down_bps) * 60 END,
+          CASE WHEN MAX(wan_upload_total) > MIN(wan_upload_total) AND MAX(uptime_seconds) >= MIN(uptime_seconds)
+               THEN MAX(wan_upload_total) - MIN(wan_upload_total)
+               ELSE AVG(wan_up_bps) * 60 END,
           AVG(online_count), AVG(cpu_load), AVG(mem_usage), COUNT(*)
         FROM samples WHERE ts >= ? AND ts < ?
         GROUP BY CAST(ts / 60 AS INTEGER)
@@ -414,14 +426,11 @@ export class Store {
   }
 
   setMeta(key, value) {
-    this.db.prepare(`
-      INSERT INTO meta (key, value) VALUES (?, ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    `).run(key, value);
+    this.upsertMeta.run(key, value);
   }
 
   getMeta(key) {
-    const row = this.db.prepare('SELECT value FROM meta WHERE key = ?').get(key);
+    const row = this.selectMeta.get(key);
     if (!row) return null;
     try {
       return JSON.parse(row.value);
@@ -442,6 +451,18 @@ export class Store {
     this.db.prepare('DELETE FROM client_samples_1h WHERE ts < ?').run(aggCutoff);
     this.db.prepare('DELETE FROM samples_1d WHERE ts < ?').run(aggCutoff);
     this.db.prepare('DELETE FROM client_samples_1d WHERE ts < ?').run(aggCutoff);
+  }
+
+  checkpoint() {
+    this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  }
+
+  close() {
+    if (this._closed) return;
+    this._closed = true;
+    this.flush();
+    this.checkpoint();
+    this.db.close();
   }
 
   summary() {
@@ -717,6 +738,66 @@ export class Store {
       })),
       down: topUsage(rows, 'down_bytes', limit),
       up: topUsage(rows, 'up_bytes', limit)
+    };
+  }
+
+  // Completed days read from the 1d tier; the current (unfinished) day is
+  // filled in from the 1h tier so partial-day traffic is included.
+  monthly(fromTs, toTs) {
+    const today = Math.floor(Date.now() / 1000 / 86400) * 86400;
+    const currentDayFrom = Math.max(fromTs, today);
+
+    const days = this.db.prepare(`
+      SELECT ts, SUM(down_bytes) AS down_bytes, SUM(up_bytes) AS up_bytes
+      FROM (
+        SELECT ts, down_bytes, up_bytes
+        FROM samples_1d
+        WHERE ts >= ? AND ts <= ? AND ts < ?
+        UNION ALL
+        SELECT CAST(ts / 86400 AS INTEGER) * 86400 AS ts, SUM(down_bytes) AS down_bytes, SUM(up_bytes) AS up_bytes
+        FROM samples_1h
+        WHERE ts >= ? AND ts <= ?
+        GROUP BY CAST(ts / 86400 AS INTEGER)
+      )
+      GROUP BY ts
+      ORDER BY ts
+    `).all(fromTs, toTs, today, currentDayFrom, toTs);
+
+    const clients = this.db.prepare(`
+      SELECT u.mac, COALESCE(c.name, '') AS name, COALESCE(c.oname, '') AS oname, COALESCE(c.ip, '') AS ip,
+             u.down_bytes, u.up_bytes
+      FROM (
+        SELECT mac, SUM(down_bytes) AS down_bytes, SUM(up_bytes) AS up_bytes
+        FROM (
+          SELECT mac, down_bytes, up_bytes
+          FROM client_samples_1d
+          WHERE ts >= ? AND ts <= ? AND ts < ?
+          UNION ALL
+          SELECT mac, SUM(down_bytes) AS down_bytes, SUM(up_bytes) AS up_bytes
+          FROM client_samples_1h
+          WHERE ts >= ? AND ts <= ?
+          GROUP BY mac
+        )
+        GROUP BY mac
+      ) u
+      LEFT JOIN clients c ON c.mac = u.mac
+    `).all(fromTs, toTs, today, currentDayFrom, toTs);
+
+    return {
+      days: days.map((row) => ({
+        ts: Number(row.ts),
+        down_bytes: Math.max(0, Number(row.down_bytes) || 0),
+        up_bytes: Math.max(0, Number(row.up_bytes) || 0)
+      })),
+      clients: clients
+        .map((row) => ({
+          mac: row.mac,
+          name: row.name || row.oname || row.mac,
+          ip: row.ip || '',
+          down_bytes: Math.max(0, Number(row.down_bytes) || 0),
+          up_bytes: Math.max(0, Number(row.up_bytes) || 0)
+        }))
+        .sort((a, b) => (b.down_bytes + b.up_bytes) - (a.down_bytes + a.up_bytes))
     };
   }
 }

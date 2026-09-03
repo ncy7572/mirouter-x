@@ -167,38 +167,38 @@ select {
 .app-shell {
   width: min(1500px, calc(100vw - 32px));
   margin: 0 auto;
-  padding: 12px 0 40px;
+  padding: 8px 0 24px;
 }
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 10px 0 22px;
+  gap: 10px;
+  padding: 4px 0 10px;
 }
 
 .brand-lockup {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .brand-icon {
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--surface);
   box-shadow: var(--shadow);
 }
 
 .eyebrow {
-  margin: 0 0 4px;
+  margin: 0 0 2px;
   color: var(--accent);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -210,19 +210,19 @@ p {
 }
 
 h1 {
-  font-size: 28px;
+  font-size: 18px;
   font-weight: 760;
 }
 
 h2 {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 760;
 }
 
 .client-count {
   margin-left: 8px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -230,25 +230,25 @@ h2 {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
 }
 
 .database-size {
-  min-width: 86px;
-  padding: 8px 10px;
+  min-width: 64px;
+  padding: 4px 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   text-align: center;
   box-shadow: var(--shadow);
 }
 
 .status-pill {
-  min-width: 110px;
-  padding: 8px 12px;
+  min-width: 96px;
+  padding: 4px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
@@ -257,14 +257,15 @@ h2 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 6px;
   text-align: center;
+  font-size: 12px;
   box-shadow: var(--shadow);
 }
 
 .status-refresh-icon {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   color: currentColor;
   flex: 0 0 auto;
   transform-origin: center;
@@ -306,18 +307,18 @@ h2 {
 }
 
 .refresh-rate-control {
-  height: 38px;
-  min-width: 178px;
-  padding: 6px 10px;
+  height: 30px;
+  min-width: 156px;
+  padding: 3px 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   color: var(--muted);
   display: inline-grid;
-  grid-template-columns: auto minmax(58px, 1fr) 32px;
+  grid-template-columns: auto minmax(50px, 1fr) 28px;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
+  gap: 6px;
+  font-size: 11px;
   font-weight: 700;
   box-shadow: var(--shadow);
 }
@@ -334,32 +335,33 @@ h2 {
 
 .icon-button,
 .theme-select {
-  width: 38px;
-  height: 38px;
+  width: 30px;
+  height: 30px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   color: var(--accent);
   cursor: pointer;
+  font-size: 12px;
   box-shadow: var(--shadow);
 }
 
 .theme-select {
   width: auto;
-  min-width: 142px;
-  padding: 0 30px 0 10px;
+  min-width: 116px;
+  padding: 0 24px 0 8px;
   color: var(--muted);
 }
 
 .lang-toggle {
-  height: 38px;
-  min-width: 58px;
+  height: 30px;
+  min-width: 46px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   color: var(--muted);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   box-shadow: var(--shadow);
 }
@@ -376,11 +378,12 @@ h2 {
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
 .metric,
+.monthly-panel,
 .side-panel,
 .chart-panel,
 .detail-panel {
@@ -391,29 +394,30 @@ h2 {
 }
 
 .metric {
-  min-height: 86px;
-  padding: 14px;
-  text-align: right;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
 }
 
 .metric span {
-  display: block;
-  margin-bottom: 8px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .metric strong {
-  display: block;
   overflow-wrap: anywhere;
-  font-size: 24px;
+  font-size: 15px;
   font-weight: 760;
+  text-align: right;
 }
 
 .workspace {
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 10px;
   align-items: start;
 }
 
@@ -434,8 +438,8 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 14px;
+  gap: 10px;
+  padding: 10px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -455,14 +459,14 @@ h2 {
 }
 
 .metric-toggle {
-  height: 28px;
-  min-width: 92px;
+  height: 24px;
+  min-width: 84px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--control);
   color: var(--muted);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 680;
 }
 
@@ -478,16 +482,16 @@ h2 {
 }
 
 .client-search {
-  padding: 10px 14px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--line);
 }
 
 .client-search input {
   width: 100%;
-  height: 36px;
+  height: 30px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 0 10px;
+  padding: 0 8px;
   background: var(--control);
   color: var(--ink);
   outline: none;
@@ -509,10 +513,10 @@ h2 {
   width: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: 8px;
   border: 0;
   border-bottom: 1px solid var(--line);
-  padding: 11px 14px;
+  padding: 7px 10px;
   background: transparent;
   color: inherit;
   text-align: left;
@@ -526,12 +530,12 @@ h2 {
 
 .volume-bar {
   position: absolute;
-  left: 14px;
-  bottom: 5px;
+  left: 10px;
+  bottom: 4px;
   display: flex;
   gap: 3px;
-  width: min(210px, calc(100% - 28px));
-  height: 4px;
+  width: min(180px, calc(100% - 20px));
+  height: 3px;
   overflow: hidden;
 }
 
@@ -560,17 +564,17 @@ h2 {
 }
 
 .client-meta {
-  margin-top: 3px;
+  margin-top: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .client-traffic {
-  min-width: 154px;
+  min-width: 132px;
   align-self: center;
-  font-size: 12px;
+  font-size: 11px;
   text-align: right;
 }
 
@@ -635,8 +639,8 @@ h2 {
 }
 
 .zoom-out-button {
-  height: 32px;
-  padding: 0 12px;
+  height: 28px;
+  padding: 0 10px;
   border: 1px solid var(--accent);
   border-radius: 8px;
   background: var(--active);
@@ -680,13 +684,14 @@ h2 {
 
 .scale-toggle button,
 .segmented button {
-  min-width: 44px;
-  height: 32px;
+  min-width: 40px;
+  height: 28px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--control);
   color: var(--muted);
   cursor: pointer;
+  font-size: 12px;
 }
 
 .scale-toggle button.active,
@@ -716,7 +721,7 @@ h2 {
 
 .custom-range input,
 .custom-range button {
-  height: 32px;
+  height: 28px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--control);
@@ -727,6 +732,7 @@ h2 {
   width: 168px;
   padding: 0 8px;
   color: var(--muted);
+  font-size: 12px;
 }
 
 .custom-range button {
@@ -737,8 +743,8 @@ h2 {
 
 .chart-wrap {
   position: relative;
-  height: 390px;
-  padding: 14px;
+  height: 280px;
+  padding: 10px;
 }
 
 canvas {
@@ -878,9 +884,9 @@ canvas {
 .legend {
   display: flex;
   align-items: center;
-  gap: 18px;
-  min-height: 42px;
-  padding: 0 14px 14px;
+  gap: 14px;
+  min-height: 30px;
+  padding: 0 10px 8px;
   font-size: 12px;
 }
 
@@ -927,8 +933,8 @@ canvas {
 .usage-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  padding: 0 14px 14px;
+  gap: 10px;
+  padding: 0 10px 10px;
 }
 
 .usage-card {
@@ -943,7 +949,7 @@ canvas {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -974,15 +980,15 @@ canvas {
 
 .pie-row {
   display: grid;
-  grid-template-columns: 148px minmax(0, 1fr);
+  grid-template-columns: 140px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
-  padding: 12px;
+  padding: 8px 10px;
 }
 
 .pie-row canvas {
-  width: 148px;
-  height: 148px;
+  width: 140px;
+  height: 140px;
 }
 
 .pie-legend {
@@ -1041,15 +1047,15 @@ canvas {
 .details-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-top: 14px;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .mesh-list,
 .wifi-list {
   display: grid;
-  gap: 10px;
-  padding: 14px;
+  gap: 8px;
+  padding: 10px;
 }
 
 .mesh-node,
@@ -1075,6 +1081,215 @@ canvas {
 .mesh-node span,
 .wifi-band span {
   font-size: 12px;
+}
+
+.monthly-panel {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 6px 12px;
+  min-height: 78px;
+}
+
+.monthly-panel h2 {
+  font-size: 11px;
+}
+
+.month-side {
+  flex: 0 0 190px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+}
+
+.month-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.month-nav button {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--control);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+}
+
+.month-nav button:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--accent);
+}
+
+.month-nav button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+#monthLabel {
+  min-width: 76px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.month-totals {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.month-total.down {
+  color: var(--down);
+}
+
+.month-total.up {
+  color: var(--up);
+}
+
+.month-chart-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 92px;
+}
+
+.month-top {
+  flex: 0 0 210px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  justify-content: center;
+}
+
+.month-top-list {
+  display: grid;
+  gap: 2px;
+}
+
+.month-top-row {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  gap: 5px;
+  align-items: center;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.month-top-rank {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.month-top-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.month-top-value {
+  color: var(--ink);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.month-top-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.token-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(3px);
+}
+
+.token-overlay[hidden] {
+  display: none;
+}
+
+.token-dialog {
+  display: grid;
+  gap: 10px;
+  width: min(340px, calc(100vw - 40px));
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.token-dialog p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.token-dialog input {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--control);
+  color: var(--ink);
+  outline: none;
+}
+
+.token-dialog input:focus {
+  border-color: var(--accent-2);
+}
+
+.token-dialog button {
+  height: 34px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--active);
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.token-dialog button:hover {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.token-error {
+  margin: 0;
+  color: var(--warn) !important;
+  font-size: 12px !important;
+}
+
+@media (max-width: 900px) {
+  .monthly-panel {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .month-side,
+  .month-top {
+    flex: none;
+  }
+
+  .month-chart-wrap {
+    height: 84px;
+  }
 }
 
 @media (max-width: 1100px) {

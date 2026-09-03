@@ -9,12 +9,26 @@ function loadDotEnv() {
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
-    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    const match = trimmed.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
     if (!match) continue;
     const [, key, rawValue] = match;
     if (process.env[key] !== undefined) continue;
-    process.env[key] = rawValue.replace(/^['"]|['"]$/g, '');
+    process.env[key] = parseDotEnvValue(rawValue);
   }
+}
+
+function parseDotEnvValue(rawValue) {
+  if (rawValue.length >= 2 && rawValue.startsWith('"') && rawValue.endsWith('"')) {
+    return rawValue.slice(1, -1).replace(/\\(["\\nt])/g, (match, ch) => {
+      if (ch === 'n') return '\n';
+      if (ch === 't') return '\t';
+      return ch;
+    });
+  }
+  if (rawValue.length >= 2 && rawValue.startsWith("'") && rawValue.endsWith("'")) {
+    return rawValue.slice(1, -1);
+  }
+  return rawValue;
 }
 
 loadDotEnv();
@@ -28,6 +42,7 @@ function intEnv(name, fallback, min, max) {
 export const config = {
   host: process.env.MIROUTER_HOST || '192.168.31.1',
   password: process.env.MIROUTER_PASSWORD || '',
+  accessToken: process.env.MIROUTER_TOKEN || '',
   nonceDeviceId: process.env.MIROUTER_NONCE_DEVICE_ID || process.env.MIROUTER_DEVICE_ID || '',
   authKey: process.env.MIROUTER_AUTH_KEY || 'a2ffa5c9be07488bbb04a3a47d3c5f6a',
   pollSeconds: intEnv('MIROUTER_POLL_SECONDS', 30, 1, 3600),

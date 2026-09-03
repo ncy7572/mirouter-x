@@ -6,13 +6,13 @@
     <title>Mirouter X</title>
     <link rel="icon" href="/router-icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/router-icon.svg">
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/styles.css?v=4">
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div class="brand-lockup">
-          <img class="brand-icon" src="/router-icon.svg" alt="" width="48" height="48">
+          <img class="brand-icon" src="/router-icon.svg" alt="" width="32" height="32">
           <div>
             <p class="eyebrow">Mirouter X</p>
             <h1 id="routerName">Xiaomi Router</h1>
@@ -81,6 +81,30 @@
           </article>
         </section>
 
+        <section class="monthly-panel">
+          <div class="month-side">
+            <h2 data-i18n="monthlyUsage">Monthly usage</h2>
+            <div class="month-nav">
+              <button id="monthPrev" type="button" aria-label="Previous month" data-i18n-aria-label="prevMonth">‹</button>
+              <span id="monthLabel" title="--">--</span>
+              <button id="monthNext" type="button" aria-label="Next month" data-i18n-aria-label="nextMonth">›</button>
+            </div>
+            <div class="month-totals">
+              <span class="month-total down" id="monthDownTotal">↓ --</span>
+              <span class="month-total up" id="monthUpTotal">↑ --</span>
+            </div>
+          </div>
+          <div class="month-chart-wrap">
+            <canvas id="monthChart" aria-label="Daily usage chart" data-i18n-aria-label="dailyUsage"></canvas>
+            <div class="empty-chart" id="monthEmpty" data-i18n="noMonthData">No data for this month</div>
+            <div class="chart-tooltip" id="monthTooltip" role="status" aria-live="polite"></div>
+          </div>
+          <div class="month-top">
+            <h2 data-i18n="topClients">Top clients</h2>
+            <div class="month-top-list" id="monthTopList"></div>
+          </div>
+        </section>
+
         <section class="workspace">
           <aside class="side-panel">
             <div class="panel-head">
@@ -145,7 +169,7 @@
                   <span id="usageDownTotal">--</span>
                 </div>
                 <div class="pie-row">
-                  <canvas id="usageDownChart" width="180" height="180" aria-label="Download usage pie chart"></canvas>
+                  <canvas id="usageDownChart" width="140" height="140" aria-label="Download usage pie chart"></canvas>
                   <div class="pie-legend" id="usageDownLegend"></div>
                 </div>
               </article>
@@ -155,7 +179,7 @@
                   <span id="usageUpTotal">--</span>
                 </div>
                 <div class="pie-row">
-                  <canvas id="usageUpChart" width="180" height="180" aria-label="Upload usage pie chart"></canvas>
+                  <canvas id="usageUpChart" width="140" height="140" aria-label="Upload usage pie chart"></canvas>
                   <div class="pie-legend" id="usageUpLegend"></div>
                 </div>
               </article>
@@ -183,6 +207,16 @@
     </div>
 
     <div class="pie-tooltip" id="pieTooltip"></div>
-    <script src="/app.js" type="module"></script>
+
+    <div class="token-overlay" id="tokenOverlay" hidden>
+      <form class="token-dialog" id="tokenForm">
+        <h2 data-i18n="tokenRequired">Access token required</h2>
+        <p data-i18n="tokenPrompt">Enter the access token to continue.</p>
+        <input type="password" id="tokenInput" autocomplete="off" placeholder="Access token" data-i18n-placeholder="tokenPlaceholder">
+        <p class="token-error" id="tokenError" hidden data-i18n="tokenInvalid">Invalid token, please try again</p>
+        <button type="submit" data-i18n="tokenSubmit">Confirm</button>
+      </form>
+    </div>
+    <script src="/app.js?v=4" type="module"></script>
   </body>
 </html>

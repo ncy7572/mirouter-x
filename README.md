@@ -46,6 +46,7 @@ docker run -d --name mirouter-x \
 | `MIROUTER_NONCE_DEVICE_ID` | auto | 适配不同固件登录哈希的设备 ID |
 | `MIROUTER_AUTH_KEY` | MiWiFi default | 适配不同固件登录哈希的密钥 |
 | `MIROUTER_POLL_SECONDS` | `30` | 采集间隔，单位秒（最小 1） |
+| `MIROUTER_TOKEN` | - | 可选访问令牌；设置后所有 `/api/*` 请求（`/api/health` 除外）需携带 `Authorization: Bearer <token>` 头或 `?token=<token>` 查询参数 |
 | `MIROUTER_RETENTION_DET_DAYS` | `7` | 原始数据和 1 分钟汇总数据的保留天数 |
 | `MIROUTER_RETENTION_AGG_DAYS` | `365` | 1 小时和 1 天汇总数据的保留天数 |
 | `MIROUTER_LOG_SUMMARY_MINUTES` | `10` | API 调用摘要日志间隔；设为 `0` 可禁用 |
@@ -56,6 +57,15 @@ docker run -d --name mirouter-x \
 - `MIROUTER_PASSWORD` 必填。应用启动时会登录小米路由器，以获取并刷新会话 token。
 - `MIROUTER_NONCE_DEVICE_ID` 和 `MIROUTER_AUTH_KEY` 用于适配不同固件的登录哈希；默认值匹配当前 MiWiFi 认证流程，未设置设备 ID 时会自动生成。
 - 应用会刻意避免持久化敏感路由器接口返回的 Wi-Fi 密码。
+
+## HTTP API
+
+除页面本身外，还有两个面向前端的实时/统计端点：
+
+- `GET /api/events`：SSE（`text/event-stream`）实时推送。连接后立即下发一条 `snapshot` 事件，之后每次采集结束（无论成败）都会广播最新快照，数据结构与 `GET /api/summary` 一致；每 25 秒发送一次心跳。EventSource 无法自定义请求头，设置 `MIROUTER_TOKEN` 后请使用 `?token=` 查询参数连接。
+- `GET /api/monthly?month=YYYY-MM`：按月流量统计，`month` 省略时为当前月，月份和天均按 UTC 划分。已完成的天来自 1 天汇总表，当月当天用 1 小时汇总即时补齐；响应包含月度总量、逐天字节数和按设备聚合的字节排行。月份格式非法时返回 400。
+
+1 分钟汇总的字节数优先由 WAN 累计计数器的差值得出（比按平均速率估算更准）；当分钟内计数器未增长或路由器重启导致计数器归零时，回退到平均速率 × 60 秒的估算。
 
 ## 图表时间范围
 
