@@ -379,8 +379,8 @@ server.listen(config.port, config.listenHost, () => {
   lastCleanupAt = Date.now();
   collect().finally(scheduleCollect);
   store.rollup();
-  timers.push(setInterval(flushWrites, 5000));
-  timers.push(setInterval(() => store.rollup(), 60 * 1000));
+  timers.push(setInterval(flushWrites, config.flushSeconds * 1000));
+  timers.push(setInterval(() => store.rollup(), config.rollupSeconds * 1000));
   if (config.logSummaryMinutes > 0) {
     timers.push(setInterval(logApiSummary, config.logSummaryMinutes * 60 * 1000));
   }

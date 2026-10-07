@@ -18,6 +18,7 @@ export class Store {
     this._writeQueue = [];
     this._clientSampleCache = new Map();
     this._clientInfoCache = new Map();
+    this._lastSnapshotWrittenAt = 0;
     this._closed = false;
     this.prepareSchema();
     this.db.exec('ANALYZE');
@@ -220,7 +221,7 @@ export class Store {
     return ts;
   }
 
-  flush() {
+  flush({ forceSnapshot = false } = {}) {
     if (this._writeQueue.length === 0) return 0;
     const batch = this._writeQueue.splice(0);
     this.db.exec('BEGIN IMMEDIATE');
@@ -228,15 +229,20 @@ export class Store {
       for (const { snapshot, ts } of batch) {
         this._writeSample(snapshot, ts);
       }
+      // last_snapshot changes on every poll; persist it at most once a
+      // minute (and on close) instead of paying a page write per flush.
       const { snapshot: last, ts: lastTs } = batch[batch.length - 1];
-      this.upsertMeta.run('last_snapshot', JSON.stringify({
-        ts: lastTs,
-        router: last.status.hardware,
-        counts: last.status.count,
-        wan: last.wan,
-        topo: last.topo,
-        wifi: sanitizeWifi(last.wifi)
-      }));
+      if (forceSnapshot || lastTs - this._lastSnapshotWrittenAt >= SNAPSHOT_PERSIST_SECONDS) {
+        this.upsertMeta.run('last_snapshot', JSON.stringify({
+          ts: lastTs,
+          router: last.status.hardware,
+          counts: last.status.count,
+          wan: last.wan,
+          topo: last.topo,
+          wifi: sanitizeWifi(last.wifi)
+        }));
+        this._lastSnapshotWrittenAt = lastTs;
+      }
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
@@ -316,6 +322,19 @@ export class Store {
     const lastC1h = Number(this.getMeta('rl_c_1h')) || 0;
     const lastC1d = Number(this.getMeta('rl_c_1d')) || 0;
 
+    // One transaction for the whole rollup: otherwise each tier's INSERT and
+    // setMeta commits separately, multiplying WAL frames and fsyncs.
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this._rollupTiers({ curMin, curHour, curDay, last1m, last1h, last1d, lastC1m, lastC1h, lastC1d });
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  _rollupTiers({ curMin, curHour, curDay, last1m, last1h, last1d, lastC1m, lastC1h, lastC1d }) {
     if (curMin > last1m) {
       // Byte totals come from the WAN counters when they are monotonic
       // within the minute (uptime guard catches router reboots resetting
@@ -460,7 +479,7 @@ export class Store {
   close() {
     if (this._closed) return;
     this._closed = true;
-    this.flush();
+    this.flush({ forceSnapshot: true });
     this.checkpoint();
     this.db.close();
   }
@@ -805,6 +824,7 @@ export class Store {
 const ROLLUP_CHAIN = ['1d', '1h', '1m'];
 const MIN_TIER_POINTS = 10;
 const CLIENT_INFO_REFRESH_SECONDS = 60;
+const SNAPSHOT_PERSIST_SECONDS = 60;
 // client_samples rows are written on change (plus one carry row per minute),
 // so "latest" lookups only scan a short recent window instead of MAX(ts).
 const RECENT_SAMPLE_WINDOW_SECONDS = 120;

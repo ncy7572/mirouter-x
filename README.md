@@ -46,6 +46,8 @@ docker run -d --name mirouter-x \
 | `MIROUTER_NONCE_DEVICE_ID` | auto | 适配不同固件登录哈希的设备 ID |
 | `MIROUTER_AUTH_KEY` | MiWiFi default | 适配不同固件登录哈希的密钥 |
 | `MIROUTER_POLL_SECONDS` | `30` | 采集间隔，单位秒（最小 1） |
+| `MIROUTER_FLUSH_SECONDS` | `15` | 采样数据批量写入 SQLite 的间隔，单位秒；增大可显著降低磁盘写入量，代价是图表最新点最多滞后一个落盘周期 |
+| `MIROUTER_ROLLUP_SECONDS` | `60` | 1 分钟聚合任务（rollup）的运行间隔，单位秒（最小 60）；增大可降低磁盘写入量，代价是使用 1m 层级的视图（如 1d）尾部最多滞后一个聚合周期 |
 | `MIROUTER_TOKEN` | - | 可选访问令牌；设置后所有 `/api/*` 请求（`/api/health` 除外）需携带 `Authorization: Bearer <token>` 头或 `?token=<token>` 查询参数 |
 | `MIROUTER_RETENTION_DET_DAYS` | `7` | 原始数据和 1 分钟汇总数据的保留天数 |
 | `MIROUTER_RETENTION_AGG_DAYS` | `365` | 1 小时和 1 天汇总数据的保留天数 |
@@ -119,7 +121,19 @@ Mirouter X 每次轮询会在 `samples` 中写入一条路由器数据，并在 
 
 当 `MIROUTER_POLL_SECONDS=1` 且有 500 台设备时，每天会产生 4320 万条客户端记录。本项目的本地合成基准测试在桌面 Mac 上写入了 900,000 条客户端记录，相当于 500 台设备运行 30 分钟，耗时约 11 秒，并使用约 109 MiB SQLite 页面。按此推算，在文件系统和 vacuum 影响之前，原始存储量约为 5 GB/天。
 
-后台汇总任务每分钟运行一次，把秒级原始采样压缩到 `samples_1m`、`samples_1h`、`samples_1d`（以及对应的 `client_samples_*` 表）中。较长图表视图会查询这些紧凑表，而不是原始采样表，使查询时间与桶数量成正比，而不是与采集行数成正比。
+后台汇总任务按 `MIROUTER_ROLLUP_SECONDS` 间隔运行（默认每分钟一次），把秒级原始采样压缩到 `samples_1m`、`samples_1h`、`samples_1d`（以及对应的 `client_samples_*` 表）中；间隔拉长时每次运行会批量补跑累积的分钟桶。较长图表视图会查询这些紧凑表，而不是原始采样表，使查询时间与桶数量成正比，而不是与采集行数成正比。
+
+## 磁盘写入量
+
+SQLite 的 WAL 模式按 4 KiB 页写入：每次提交事务时，所有被改动的页（哪怕只改了其中一行）都会整页追加到 WAL，checkpoint 时再整页写回主库文件。因此**磁盘写入量主要由提交频率决定，而不是数据行数**——5 秒采集 + 26 台设备时，实测容器写盘约 2.5 GB/天。
+
+降低写入量的手段（按效果排序）：
+
+- **增大 `MIROUTER_FLUSH_SECONDS`**（默认 15）：采样先进入内存队列，按此间隔合并成一次事务批量落盘。同一批设备页在一个周期内只写一次，写入量近似与落盘频率成反比。例如 5 秒采集时设为 30，写盘量约降为原来的 1/3～1/6。
+- **增大 `MIROUTER_ROLLUP_SECONDS`**（默认 60）：1 分钟聚合任务的运行间隔。聚合 SQL 按区间批量处理，间隔改为 300 时每批补跑 5 个分钟桶，聚合写入量近似按频率反比下降。
+- **增大 `MIROUTER_POLL_SECONDS`**：直接减少采样行数和提交次数，但图表原始分辨率也随之下降。
+- 路由器状态快照（`last_snapshot`）最多每分钟持久化一次，不再每次落盘都重写。
+- Docker 部署已在 compose 中限制 json-file 日志大小（10 MB × 3），避免日志无限增长。
 
 Raspberry Pi 使用建议：
 

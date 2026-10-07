@@ -46,6 +46,8 @@ export const config = {
   nonceDeviceId: process.env.MIROUTER_NONCE_DEVICE_ID || process.env.MIROUTER_DEVICE_ID || '',
   authKey: process.env.MIROUTER_AUTH_KEY || 'a2ffa5c9be07488bbb04a3a47d3c5f6a',
   pollSeconds: intEnv('MIROUTER_POLL_SECONDS', 30, 1, 3600),
+  flushSeconds: intEnv('MIROUTER_FLUSH_SECONDS', 15, 1, 3600),
+  rollupSeconds: intEnv('MIROUTER_ROLLUP_SECONDS', 60, 60, 86400),
   logSummaryMinutes: intEnv('MIROUTER_LOG_SUMMARY_MINUTES', 10, 0, 1440),
   retentionDetDays: intEnv('MIROUTER_RETENTION_DET_DAYS', 7, 1, 3650),
   retentionAggDays: intEnv('MIROUTER_RETENTION_AGG_DAYS', 365, 1, 3650),

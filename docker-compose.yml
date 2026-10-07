@@ -11,7 +11,15 @@ services:
       HOST: 0.0.0.0
       PORT: ${PORT:-3102}
       MIROUTER_DB: /app/data/mirouter.sqlite
+      MIROUTER_POLL_SECONDS: ${MIROUTER_POLL_SECONDS:-30}
+      MIROUTER_FLUSH_SECONDS: ${MIROUTER_FLUSH_SECONDS:-15}
+      MIROUTER_ROLLUP_SECONDS: ${MIROUTER_ROLLUP_SECONDS:-60}
       MIROUTER_RETENTION_DET_DAYS: ${MIROUTER_RETENTION_DET_DAYS:-7}
       MIROUTER_RETENTION_AGG_DAYS: ${MIROUTER_RETENTION_AGG_DAYS:-365}
     volumes:
       - ./data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
