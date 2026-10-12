@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { Store } from './db.js';
 import { RouterClient } from './router-client.js';
@@ -51,6 +52,7 @@ if (JSON.stringify(summary).includes('secret')) {
 
 testMonthly();
 testSparseWrites();
+testLiveBuffer();
 
 await testRouterClientPasswordLogin();
 
@@ -239,4 +241,45 @@ function readBody(req) {
 function sendTestJson(res, payload) {
   res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(payload));
+}
+
+function testLiveBuffer() {
+  const store = new Store(':memory:');
+  const now = Date.now;
+  const start = Math.floor(now() / 60000) * 60 - 180;
+  const sample = rate => ({
+    status: { wan: {downspeed:rate,upspeed:10}, cpu:{},mem:{},count:{online:1,all:1},hardware:{} },
+    devices: { list: [{mac:'TEST',name:'Live',oname:'Live',online:1,statistics:{downspeed:rate,upspeed:10,online:50}}] },
+    wan:{},topo:{},wifi:{info:[{password:'private'}]}
+  });
+  try {
+    Date.now = () => (start + 10) * 1000;
+    store.queueSnapshot(sample(100));
+    Date.now = () => (start + 70) * 1000;
+    store.queueSnapshot(sample(200));
+    assert.equal(store.db.prepare('SELECT COUNT(*) n FROM main.samples').get().n, 0);
+    assert.equal(store.summary().latest.wan_down_bps, 200);
+    assert.equal(store.summary().topClients[0].down_bps, 200);
+    assert.equal(store.clients()[0].down_bps, 200);
+    assert.equal(JSON.stringify(store.summary()).includes('private'), false);
+    const range = {from:start,to:start+80,maxPoints:100};
+    assert.equal(store.series(range).points.length, 2);
+    assert.equal(store.series({...range,mac:'TEST'}).points.length, 2);
+    assert.equal(store.usage(range).down.total, 8000);
+    store.flush();
+    assert.equal(store.series(range).points.length, 2, 'live/persisted rows must not double count');
+    assert.equal(store.usage(range).down.total, 8000);
+    Date.now = () => (start + 130) * 1000;
+    store.queueSnapshot(sample(300));
+    Date.now = now;
+    store.rollup();
+    assert.equal(store._writeQueue.length, 0);
+    assert.equal(store.db.prepare('SELECT SUM(n) n FROM samples_1m').get().n, 3);
+    assert.equal(store.db.prepare('SELECT COUNT(*) n FROM pending_samples').get().n, 1);
+    assert.equal(store.db.prepare('SELECT COUNT(*) n FROM pending_client_samples').get().n, 1);
+    console.log('Live buffer and flush-before-rollup tests passed');
+  } finally {
+    Date.now = now;
+    store.close();
+  }
 }

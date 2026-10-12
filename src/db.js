@@ -14,6 +14,10 @@ export class Store {
     this.db = new DatabaseSync(dbPath);
     this.db.exec('PRAGMA journal_mode = WAL');
     this.db.exec('PRAGMA synchronous = NORMAL');
+    // Checkpoints run explicitly (hourly TRUNCATE in collect(), on close).
+    // The default 1000-page auto-checkpoint fires every few minutes here and
+    // rewrites the same hot pages back to the main DB each time.
+    this.db.exec('PRAGMA wal_autocheckpoint = 0');
     this.db.exec('PRAGMA temp_store = MEMORY');
     this._writeQueue = [];
     this._clientSampleCache = new Map();
@@ -23,6 +27,7 @@ export class Store {
     this.prepareSchema();
     this.db.exec('ANALYZE');
     this.prepareStatements();
+    this.prepareLiveTables();
   }
 
   sizeBytes() {
@@ -215,8 +220,30 @@ export class Store {
     `);
   }
 
+  // TEMP tables use temp_store=MEMORY: live reads include buffered samples
+  // without touching the SD card. The persistent schema stays unchanged.
+  prepareLiveTables() {
+    for (const table of ['samples', 'client_samples', 'clients']) {
+      const { sql } = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
+      this.db.exec(sql.replace(`CREATE TABLE ${table}`, `CREATE TEMP TABLE pending_${table}`));
+      const key = table === 'samples' ? 'p.ts = m.ts'
+        : table === 'clients' ? 'p.mac = m.mac' : 'p.ts = m.ts AND p.mac = m.mac';
+      this.db.exec(`CREATE TEMP VIEW live_${table} AS
+        SELECT * FROM pending_${table}
+        UNION ALL SELECT m.* FROM main.${table} m
+        WHERE NOT EXISTS (SELECT 1 FROM pending_${table} p WHERE ${key})`);
+    }
+    this.liveInsertSample = this.db.prepare(this.insertSample.sourceSQL.replace('INTO samples', 'INTO pending_samples'));
+    this.liveInsertClientSample = this.db.prepare(this.insertClientSample.sourceSQL.replace('INTO client_samples', 'INTO pending_client_samples'));
+    this.liveUpsertClient = this.db.prepare(this.upsertClient.sourceSQL
+      .replace('INTO clients', 'INTO pending_clients').replaceAll('clients.', 'pending_clients.'));
+    this._liveSampleCache = new Map();
+    this._liveInfoCache = new Map();
+  }
+
   queueSnapshot(snapshot) {
     const ts = Math.floor(Date.now() / 1000);
+    this._writeSample(snapshot, ts, true);
     this._writeQueue.push({ snapshot, ts });
     return ts;
   }
@@ -251,11 +278,20 @@ export class Store {
       this._writeQueue.unshift(...batch);
       throw error;
     }
+    // Keep only the latest live row per device after successful persistence.
+    this.db.exec(`DELETE FROM pending_samples WHERE ts < (SELECT MAX(ts) FROM pending_samples);
+      DELETE FROM pending_client_samples WHERE (mac, ts) NOT IN
+        (SELECT mac, MAX(ts) FROM pending_client_samples GROUP BY mac);`);
     return batch.length;
   }
 
-  _writeSample(snapshot, ts) {
-    this.insertSample.run(
+  _writeSample(snapshot, ts, live = false) {
+    const insertSample = live ? this.liveInsertSample : this.insertSample;
+    const insertClientSample = live ? this.liveInsertClientSample : this.insertClientSample;
+    const upsertClient = live ? this.liveUpsertClient : this.upsertClient;
+    const sampleCache = live ? this._liveSampleCache : this._clientSampleCache;
+    const infoCache = live ? this._liveInfoCache : this._clientInfoCache;
+    insertSample.run(
       ts,
       asNumber(snapshot.status.wan?.downspeed),
       asNumber(snapshot.status.wan?.upspeed),
@@ -280,9 +316,9 @@ export class Store {
       // changed or last_seen_ts is due for a refresh.
       const name = client.name || client.oname || client.mac;
       const infoKey = [name, client.oname || '', ip, asNumber(client.type), asNumber(client.isap), client.parent || ''].join('\n');
-      const infoCached = this._clientInfoCache.get(client.mac);
+      const infoCached = infoCache.get(client.mac);
       if (!infoCached || infoCached.key !== infoKey || ts - infoCached.ts >= CLIENT_INFO_REFRESH_SECONDS) {
-        this.upsertClient.run(
+        upsertClient.run(
           client.mac,
           name,
           client.oname || '',
@@ -292,7 +328,7 @@ export class Store {
           client.parent || '',
           ts
         );
-        this._clientInfoCache.set(client.mac, { key: infoKey, ts });
+        infoCache.set(client.mac, { key: infoKey, ts });
       }
 
       // Skip samples whose value is unchanged since the last written row;
@@ -301,15 +337,17 @@ export class Store {
       // integration exact regardless of row spacing.
       const sampleKey = `${downBps},${upBps},${active}`;
       const minute = Math.floor(ts / 60);
-      const sampleCached = this._clientSampleCache.get(client.mac);
+      const sampleCached = sampleCache.get(client.mac);
       if (!sampleCached || sampleCached.key !== sampleKey || sampleCached.minute !== minute) {
-        this.insertClientSample.run(ts, client.mac, downBps, upBps, onlineSeconds, active);
-        this._clientSampleCache.set(client.mac, { key: sampleKey, minute });
+        insertClientSample.run(ts, client.mac, downBps, upBps, onlineSeconds, active);
+        sampleCache.set(client.mac, { key: sampleKey, minute });
       }
     }
   }
 
   rollup() {
+    // Never advance aggregation watermarks past samples still in memory.
+    this.flush();
     const now = Math.floor(Date.now() / 1000);
     const curMin = Math.floor(now / 60) * 60;
     const curHour = Math.floor(now / 3600) * 3600;
@@ -485,16 +523,23 @@ export class Store {
   }
 
   summary() {
-    const latest = this.db.prepare('SELECT * FROM samples ORDER BY ts DESC LIMIT 1').get() ?? null;
-    const lastSnapshot = this.getMeta('last_snapshot');
+    const latest = this.db.prepare('SELECT * FROM live_samples ORDER BY ts DESC LIMIT 1').get() ?? null;
+    const queued = this._writeQueue.at(-1);
+    const lastSnapshot = queued ? {
+      ts: queued.ts, router: queued.snapshot.status.hardware,
+      counts: queued.snapshot.status.count, wan: queued.snapshot.wan,
+      topo: queued.snapshot.topo, wifi: sanitizeWifi(queued.snapshot.wifi)
+    } : this.getMeta('last_snapshot');
     const recentCutoff = Math.floor(Date.now() / 1000) - RECENT_SAMPLE_WINDOW_SECONDS;
     const topClients = this.db.prepare(`
+      WITH recent AS MATERIALIZED (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY mac ORDER BY ts DESC) AS rn
+        FROM live_client_samples WHERE ts > ?
+      )
       SELECT c.mac, c.name, c.oname, c.ip, c.parent, c.type, c.is_ap,
              cs.down_bps, cs.up_bps, cs.online_seconds, cs.active
-      FROM clients c
-      JOIN client_samples cs
-        ON cs.mac = c.mac
-       AND cs.ts = (SELECT MAX(t.ts) FROM client_samples t WHERE t.mac = c.mac AND t.ts > ?)
+      FROM live_clients c
+      JOIN recent cs ON cs.mac = c.mac AND cs.rn = 1
       ORDER BY (cs.down_bps + cs.up_bps) DESC
       LIMIT 12
     `).all(recentCutoff);
@@ -514,14 +559,16 @@ export class Store {
   clients() {
     const recentCutoff = Math.floor(Date.now() / 1000) - RECENT_SAMPLE_WINDOW_SECONDS;
     return this.db.prepare(`
+      WITH recent AS MATERIALIZED (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY mac ORDER BY ts DESC) AS rn
+        FROM live_client_samples WHERE ts > ?
+      )
       SELECT c.mac, c.name, c.oname, c.ip, c.parent, c.type, c.is_ap, c.last_seen_ts,
              COALESCE(last.down_bps, 0) AS down_bps,
              COALESCE(last.up_bps, 0) AS up_bps,
              COALESCE(last.active, 0) AS active
-      FROM clients c
-      LEFT JOIN client_samples last
-        ON last.mac = c.mac
-       AND last.ts = (SELECT MAX(t.ts) FROM client_samples t WHERE t.mac = c.mac AND t.ts > ?)
+      FROM live_clients c
+      LEFT JOIN recent last ON last.mac = c.mac AND last.rn = 1
       ORDER BY active DESC, (down_bps + up_bps) DESC, name COLLATE NOCASE
       LIMIT 500
     `).all(recentCutoff);
@@ -549,7 +596,7 @@ export class Store {
               down_bps,
               up_bps,
               LEAD(ts) OVER (ORDER BY ts) AS next_ts
-            FROM client_samples
+            FROM live_client_samples
             WHERE ts BETWEEN ? AND ? AND mac = ?
           )
           SELECT CAST(ts / ? AS INTEGER) * ? AS ts,
@@ -579,7 +626,7 @@ export class Store {
             wan_up_bps,
             online_count,
             LEAD(ts) OVER (ORDER BY ts) AS next_ts
-          FROM samples
+          FROM live_samples
           WHERE ts BETWEEN ? AND ?
         )
         SELECT CAST(ts / ? AS INTEGER) * ? AS ts,
@@ -684,7 +731,7 @@ export class Store {
           down_bps,
           up_bps,
           LEAD(ts) OVER (PARTITION BY mac ORDER BY ts) AS next_ts
-        FROM client_samples
+        FROM live_client_samples
         WHERE ts BETWEEN ? AND ?
       ),
       usage AS (
@@ -703,7 +750,7 @@ export class Store {
         COALESCE(u.down_bytes, 0) AS down_bytes,
         COALESCE(u.up_bytes, 0) AS up_bytes
       FROM usage u
-      LEFT JOIN clients c ON c.mac = u.mac
+      LEFT JOIN live_clients c ON c.mac = u.mac
       WHERE down_bytes > 0 OR up_bytes > 0
     `).all(from, to, to, to, to, to);
 

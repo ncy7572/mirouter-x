@@ -46,7 +46,7 @@ docker run -d --name mirouter-x \
 | `MIROUTER_NONCE_DEVICE_ID` | auto | 适配不同固件登录哈希的设备 ID |
 | `MIROUTER_AUTH_KEY` | MiWiFi default | 适配不同固件登录哈希的密钥 |
 | `MIROUTER_POLL_SECONDS` | `30` | 采集间隔，单位秒（最小 1） |
-| `MIROUTER_FLUSH_SECONDS` | `15` | 采样数据批量写入 SQLite 的间隔，单位秒；增大可显著降低磁盘写入量，代价是图表最新点最多滞后一个落盘周期 |
+| `MIROUTER_FLUSH_SECONDS` | `15` | 采样数据批量写入 SQLite 的间隔，单位秒；增大可显著降低磁盘写入量，最新状态、客户端和原始图表从内存缓冲读取，不受落盘周期影响；异常断电可能丢失一个落盘周期内的数据 |
 | `MIROUTER_ROLLUP_SECONDS` | `60` | 1 分钟聚合任务（rollup）的运行间隔，单位秒（最小 60）；增大可降低磁盘写入量，代价是使用 1m 层级的视图（如 1d）尾部最多滞后一个聚合周期 |
 | `MIROUTER_TOKEN` | - | 可选访问令牌；设置后所有 `/api/*` 请求（`/api/health` 除外）需携带 `Authorization: Bearer <token>` 头或 `?token=<token>` 查询参数 |
 | `MIROUTER_RETENTION_DET_DAYS` | `7` | 原始数据和 1 分钟汇总数据的保留天数 |
@@ -113,7 +113,9 @@ Mirouter X 使用不同的保留窗口保存两类数据：
 
 ## 数据库和性能
 
-Mirouter X 每次轮询会在 `samples` 中写入一条路由器数据，并在 `client_samples` 中为每个可见设备写入一条数据。SQLite 以 WAL 模式运行，并使用 `synchronous=NORMAL`，因此短写入成本较低；但高频采集会让数据库按线性速度增长：
+Mirouter X 每次轮询会在 `samples` 中写入一条路由器数据，并在 `client_samples` 中为每个可见设备写入一条数据。实时采样先写入 SQLite 的内存 TEMP 表，最新状态、客户端、原始图表和短期用量查询合并读取内存与历史数据。批量落盘后清理内存历史，仅保留各设备的最新记录。聚合前强制落盘，防止聚合进度越过未写入的采样。
+
+SQLite 以 WAL 模式运行，并使用 `synchronous=NORMAL`，因此短写入成本较低；但高频采集会让数据库按线性速度增长：
 
 ```text
 每日客户端采样行数 = 86400 / MIROUTER_POLL_SECONDS * 设备数量
@@ -135,9 +137,11 @@ SQLite 的 WAL 模式按 4 KiB 页写入：每次提交事务时，所有被改�
 - 路由器状态快照（`last_snapshot`）最多每分钟持久化一次，不再每次落盘都重写。
 - Docker 部署已在 compose 中限制 json-file 日志大小（10 MB × 3），避免日志无限增长。
 
+本次 SD 卡部署使用 5 秒采集、300 秒落盘、300 秒聚合，每小时 checkpoint。实时状态和 15m 原始图表仍按采集更新；长时间范围聚合最多滞后约 5 分钟。关闭自动 checkpoint，避免频繁重写主库。Docker 直接运行 Node，正常停止时会落盘并 checkpoint。
+
 Raspberry Pi 使用建议：
 
 - 如果数据库放在质量较好的 SSD 上，Pi 通常可以承受 1 秒轮询和 500 台设备的写入速率。
 - 不建议在这种负载下使用 microSD 卡，因为写入量大，且会影响长期寿命。
 - 在 Raspberry Pi 上使用时，如果需要长时间保留数据，建议使用默认的 30 秒轮询；如果使用 1 秒轮询，请缩短保留时间。例如，1 秒轮询加 500 台设备适合短时间诊断，不适合在 Pi 存储上保存一整年的历史。
-- 在默认的 7 天明细保留和 365 天聚合保留下，Pi 上的数据库大小仍可管理：原始数据每周清理一次，长期累积的只有紧凑的小时/天汇总数据。
+- 在默认的 7 天明细保留和 365 天聚合保留下，Pi 上的数据库大小仍可管理：每小时按 7 天窗口清理明细，长期累积的只有紧凑的小时/天汇总数据。
