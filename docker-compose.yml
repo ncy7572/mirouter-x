@@ -18,6 +18,10 @@ services:
       MIROUTER_RETENTION_AGG_DAYS: ${MIROUTER_RETENTION_AGG_DAYS:-365}
     volumes:
       - ./data:/app/data
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     logging:
       driver: json-file
       options:
