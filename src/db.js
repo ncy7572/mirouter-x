@@ -574,6 +574,27 @@ export class Store {
     `).all(recentCutoff);
   }
 
+  clientStats(mac, days = 30) {
+    const today = Math.floor(Date.now() / 1000 / 86400) * 86400;
+    const from = today - days * 86400;
+    const rows = this.db.prepare(`
+      SELECT ts, down_bytes, up_bytes
+      FROM client_samples_1d
+      WHERE mac = ? AND ts >= ? AND ts < ?
+      ORDER BY ts
+    `).all(mac, from, today);
+
+    return {
+      mac,
+      days,
+      from,
+      to: today - 1,
+      sampleDays: rows.length,
+      down: summarizeDailyUsage(rows, 'down_bytes'),
+      up: summarizeDailyUsage(rows, 'up_bytes')
+    };
+  }
+
   series({ from, to, maxPoints = 900, mac = '' }) {
     const span = Math.max(1, to - from);
     const { tier, bucket } = seriesTier(span, maxPoints);
@@ -881,6 +902,42 @@ function seriesTier(span, maxPoints) {
   if (span <= 86400) return { tier: '1m', bucket: 60 };
   if (span < 30 * 86400) return { tier: '1h', bucket: 3600 };
   return { tier: '1d', bucket: 86400 };
+}
+
+function summarizeDailyUsage(rows, key) {
+  const daily = rows.map((row) => ({
+    ts: Number(row.ts),
+    bytes: Math.max(0, Number(row[key]) || 0)
+  }));
+  if (daily.length === 0) {
+    return {
+      p95_bytes: 0,
+      p50_bytes: 0,
+      total_bytes: 0,
+      avg_bytes: 0,
+      peak_bytes: 0,
+      peak_ts: null,
+      latest_bytes: 0,
+      latest_ts: null
+    };
+  }
+
+  const sorted = daily.map((day) => day.bytes).sort((a, b) => a - b);
+  const percentile = (p) => sorted[Math.max(0, Math.ceil(sorted.length * p) - 1)];
+  const total = daily.reduce((sum, day) => sum + day.bytes, 0);
+  const peak = daily.reduce((best, day) => day.bytes > best.bytes ? day : best, daily[0]);
+  const latest = daily[daily.length - 1];
+
+  return {
+    p95_bytes: percentile(0.95),
+    p50_bytes: percentile(0.5),
+    total_bytes: total,
+    avg_bytes: total / daily.length,
+    peak_bytes: peak.bytes,
+    peak_ts: peak.ts,
+    latest_bytes: latest.bytes,
+    latest_ts: latest.ts
+  };
 }
 
 function topUsage(rows, key, limit) {

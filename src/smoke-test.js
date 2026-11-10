@@ -51,6 +51,7 @@ if (JSON.stringify(summary).includes('secret')) {
 }
 
 testMonthly();
+testClientStats();
 testSparseWrites();
 testLiveBuffer();
 
@@ -152,6 +153,42 @@ function testMonthly() {
   if (pastOnly.days.length !== 1 || pastOnly.days[0].down_bytes !== 1000) {
     throw new Error('Monthly completed-days-only range failed');
   }
+}
+
+function testClientStats() {
+  const today = Math.floor(Date.now() / 1000 / 86400) * 86400;
+  const mac = 'AA:BB:CC:DD:EE:04';
+  const insDay = store.db.prepare(
+    'INSERT OR REPLACE INTO client_samples_1d (ts, mac, down_bytes, up_bytes) VALUES (?, ?, ?, ?)'
+  );
+  for (let day = 1; day <= 30; day += 1) {
+    insDay.run(today - day * 86400, mac, day * 1024, (31 - day) * 1024);
+  }
+  insDay.run(today, mac, 999999, 999999);
+  insDay.run(today - 31 * 86400, mac, 999999, 999999);
+
+  const stats = store.clientStats(mac);
+  assert.equal(stats.sampleDays, 30);
+  assert.equal(stats.from, today - 30 * 86400);
+  assert.equal(stats.to, today - 1);
+  assert.equal(stats.down.p95_bytes, 29 * 1024);
+  assert.equal(stats.down.p50_bytes, 15 * 1024);
+  assert.equal(stats.down.total_bytes, 465 * 1024);
+  assert.equal(stats.down.avg_bytes, 15.5 * 1024);
+  assert.equal(stats.down.peak_bytes, 30 * 1024);
+  assert.equal(stats.down.peak_ts, today - 30 * 86400);
+  assert.equal(stats.down.latest_bytes, 1024);
+  assert.equal(stats.down.latest_ts, today - 86400);
+  assert.equal(stats.up.p95_bytes, 29 * 1024);
+  assert.equal(stats.up.peak_bytes, 30 * 1024);
+  assert.equal(stats.up.peak_ts, today - 86400);
+  assert.equal(stats.up.latest_bytes, 30 * 1024);
+
+  const empty = store.clientStats('AA:BB:CC:DD:EE:05');
+  assert.equal(empty.sampleDays, 0);
+  assert.equal(empty.down.p95_bytes, 0);
+  assert.equal(empty.down.peak_ts, null);
+  assert.equal(empty.down.latest_ts, null);
 }
 
 async function testRouterClientPasswordLogin() {

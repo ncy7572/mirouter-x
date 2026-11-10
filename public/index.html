@@ -7,7 +7,7 @@
     <title>Mirouter X // Network Terminal</title>
     <link rel="icon" href="/router-icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/router-icon.svg">
-    <link rel="stylesheet" href="/styles.css?v=6">
+    <link rel="stylesheet" href="/styles.css?v=7">
   </head>
   <body>
     <div class="app-shell">
@@ -189,7 +189,7 @@
               <span class="legend-hint" data-i18n="dragToZoom">DRAG TO ZOOM</span>
               <span id="bucketInfo"></span>
             </div>
-            <div class="usage-grid">
+            <div class="usage-grid" id="usageGrid">
               <article class="usage-card">
                 <div class="usage-head">
                   <h2><span class="usage-arrow down">↓</span><span data-i18n="accumulatedDown">Accumulated Down</span></h2>
@@ -208,6 +208,48 @@
                 <div class="pie-row">
                   <canvas id="usageUpChart" width="140" height="140" aria-label="Upload usage pie chart"></canvas>
                   <div class="pie-legend" id="usageUpLegend"></div>
+                </div>
+              </article>
+            </div>
+            <div class="usage-grid client-stats-grid" id="clientStatsGrid" hidden>
+              <article class="usage-card">
+                <div class="usage-head">
+                  <h2><span class="usage-arrow down">↓</span><span data-i18n="thirtyDayDown">30D Downstream</span></h2>
+                  <span id="clientDownCoverage">--</span>
+                </div>
+                <div class="client-stats-body">
+                  <div class="client-p95">
+                    <span data-i18n="dailyP95">Daily P95</span>
+                    <strong id="clientDownP95">--</strong>
+                    <small data-i18n="perDay">per day</small>
+                  </div>
+                  <dl class="client-stats-list">
+                    <div><dt data-i18n="thirtyDayTotal">30-day total</dt><dd id="clientDownTotal">--</dd></div>
+                    <div><dt data-i18n="averageValidDay">Avg / valid day</dt><dd id="clientDownAvg">--</dd></div>
+                    <div><dt data-i18n="dailyP50">Daily P50</dt><dd id="clientDownP50">--</dd></div>
+                    <div><dt data-i18n="peakDay">Peak day</dt><dd><strong id="clientDownPeak">--</strong><small id="clientDownPeakDate"></small></dd></div>
+                    <div><dt data-i18n="latestFullDay">Latest full day</dt><dd><strong id="clientDownLatest">--</strong><small id="clientDownLatestDate"></small></dd></div>
+                  </dl>
+                </div>
+              </article>
+              <article class="usage-card">
+                <div class="usage-head">
+                  <h2><span class="usage-arrow up">↑</span><span data-i18n="thirtyDayUp">30D Upstream</span></h2>
+                  <span id="clientUpCoverage">--</span>
+                </div>
+                <div class="client-stats-body">
+                  <div class="client-p95">
+                    <span data-i18n="dailyP95">Daily P95</span>
+                    <strong id="clientUpP95">--</strong>
+                    <small data-i18n="perDay">per day</small>
+                  </div>
+                  <dl class="client-stats-list">
+                    <div><dt data-i18n="thirtyDayTotal">30-day total</dt><dd id="clientUpTotal">--</dd></div>
+                    <div><dt data-i18n="averageValidDay">Avg / valid day</dt><dd id="clientUpAvg">--</dd></div>
+                    <div><dt data-i18n="dailyP50">Daily P50</dt><dd id="clientUpP50">--</dd></div>
+                    <div><dt data-i18n="peakDay">Peak day</dt><dd><strong id="clientUpPeak">--</strong><small id="clientUpPeakDate"></small></dd></div>
+                    <div><dt data-i18n="latestFullDay">Latest full day</dt><dd><strong id="clientUpLatest">--</strong><small id="clientUpLatestDate"></small></dd></div>
+                  </dl>
                 </div>
               </article>
             </div>
@@ -251,6 +293,6 @@
         <button type="submit" data-i18n="tokenSubmit">Confirm</button>
       </form>
     </div>
-    <script src="/app.js?v=6" type="module"></script>
+    <script src="/app.js?v=7" type="module"></script>
   </body>
 </html>

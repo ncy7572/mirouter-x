@@ -24,6 +24,9 @@ const state = {
   eventSource: null,
   monthCursor: '',
   monthly: null,
+  clientStats: null,
+  clientStatsStatus: 'idle',
+  clientStatsRequest: 0,
   monthGeometry: null,
   monthByDay: new Map(),
   visibleSeries: {
@@ -78,6 +81,26 @@ const els = {
   usageUpLegend: document.querySelector('#usageUpLegend'),
   usageDownTotal: document.querySelector('#usageDownTotal'),
   usageUpTotal: document.querySelector('#usageUpTotal'),
+  usageGrid: document.querySelector('#usageGrid'),
+  clientStatsGrid: document.querySelector('#clientStatsGrid'),
+  clientDownCoverage: document.querySelector('#clientDownCoverage'),
+  clientDownP95: document.querySelector('#clientDownP95'),
+  clientDownTotal: document.querySelector('#clientDownTotal'),
+  clientDownAvg: document.querySelector('#clientDownAvg'),
+  clientDownP50: document.querySelector('#clientDownP50'),
+  clientDownPeak: document.querySelector('#clientDownPeak'),
+  clientDownPeakDate: document.querySelector('#clientDownPeakDate'),
+  clientDownLatest: document.querySelector('#clientDownLatest'),
+  clientDownLatestDate: document.querySelector('#clientDownLatestDate'),
+  clientUpCoverage: document.querySelector('#clientUpCoverage'),
+  clientUpP95: document.querySelector('#clientUpP95'),
+  clientUpTotal: document.querySelector('#clientUpTotal'),
+  clientUpAvg: document.querySelector('#clientUpAvg'),
+  clientUpP50: document.querySelector('#clientUpP50'),
+  clientUpPeak: document.querySelector('#clientUpPeak'),
+  clientUpPeakDate: document.querySelector('#clientUpPeakDate'),
+  clientUpLatest: document.querySelector('#clientUpLatest'),
+  clientUpLatestDate: document.querySelector('#clientUpLatestDate'),
   pieTooltip: document.querySelector('#pieTooltip'),
   monthPrev: document.querySelector('#monthPrev'),
   monthNext: document.querySelector('#monthNext'),
@@ -174,6 +197,16 @@ const translations = {
     topClients: 'Top clients',
     noMonthData: 'No data for this month',
     dailyUsage: 'Daily usage chart',
+    thirtyDayDown: '30D Downstream',
+    thirtyDayUp: '30D Upstream',
+    dailyP95: 'Daily P95',
+    perDay: 'per day',
+    thirtyDayTotal: '30-day total',
+    averageValidDay: 'Avg / valid day',
+    dailyP50: 'Daily P50',
+    peakDay: 'Peak day',
+    latestFullDay: 'Latest full day',
+    validDays: 'valid days · UTC',
     disconnected: 'Disconnected',
     tokenRequired: 'Access token required',
     tokenPrompt: 'Enter the access token to continue.',
@@ -252,6 +285,16 @@ const translations = {
     topClients: '客户端排行',
     noMonthData: '该月暂无数据',
     dailyUsage: '每日用量图表',
+    thirtyDayDown: '近 30 日下行',
+    thirtyDayUp: '近 30 日上行',
+    dailyP95: '每日流量 P95',
+    perDay: '每天',
+    thirtyDayTotal: '30 日总量',
+    averageValidDay: '有效日日均',
+    dailyP50: '每日流量 P50',
+    peakDay: '峰值日',
+    latestFullDay: '最近完整日',
+    validDays: '个有效日 · UTC',
     disconnected: '连接断开',
     tokenRequired: '需要访问令牌',
     tokenPrompt: '请输入访问令牌以继续。',
@@ -342,7 +385,7 @@ function formatDuration(seconds) {
 }
 
 function formatBytes(value) {
-  const units = ['KB', 'MB', 'GB'];
+  const units = ['KB', 'MB', 'GB', 'TB'];
   let scaled = Math.max(0, Number(value) || 0) / 1024;
   let unit = 0;
   while (scaled >= 1024 && unit < units.length - 1) {
@@ -563,6 +606,27 @@ async function loadSeries() {
   renderClients();
   renderChart();
   renderUsageCharts();
+  syncWorkspaceHeights();
+}
+
+async function loadClientStats() {
+  const mac = state.selectedMac;
+  const request = ++state.clientStatsRequest;
+  state.clientStats = null;
+  state.clientStatsStatus = mac ? 'loading' : 'idle';
+  renderClientStats();
+  if (!mac) return;
+
+  try {
+    const data = await getJson(`/api/client-stats?mac=${encodeURIComponent(mac)}`);
+    if (request !== state.clientStatsRequest) return;
+    state.clientStats = data;
+    state.clientStatsStatus = 'ready';
+  } catch {
+    if (request !== state.clientStatsRequest) return;
+    state.clientStatsStatus = 'error';
+  }
+  renderClientStats();
   syncWorkspaceHeights();
 }
 
@@ -1345,6 +1409,46 @@ function renderUsageCharts() {
   });
 }
 
+function renderClientStats() {
+  const selected = Boolean(state.selectedMac);
+  els.usageGrid.hidden = selected;
+  els.clientStatsGrid.hidden = !selected;
+  if (!selected) {
+    hidePieTooltip();
+    return;
+  }
+
+  for (const direction of ['Down', 'Up']) {
+    const prefix = `client${direction}`;
+    const stats = state.clientStats?.[direction.toLowerCase()];
+    const hasData = state.clientStatsStatus === 'ready' && state.clientStats?.sampleDays > 0;
+    const coverage = state.clientStatsStatus === 'loading'
+      ? t('loading')
+      : state.clientStatsStatus === 'error'
+        ? t('error')
+        : `${state.clientStats?.sampleDays ?? 0}/${state.clientStats?.days ?? 30} ${t('validDays')}`;
+    const value = (key) => hasData ? formatBytes(stats?.[key]) : '--';
+    els[`${prefix}Coverage`].textContent = coverage;
+    els[`${prefix}P95`].textContent = value('p95_bytes');
+    els[`${prefix}Total`].textContent = value('total_bytes');
+    els[`${prefix}Avg`].textContent = value('avg_bytes');
+    els[`${prefix}P50`].textContent = value('p50_bytes');
+    els[`${prefix}Peak`].textContent = value('peak_bytes');
+    els[`${prefix}Latest`].textContent = value('latest_bytes');
+    els[`${prefix}PeakDate`].textContent = hasData ? formatClientStatDay(stats?.peak_ts) : '';
+    els[`${prefix}LatestDate`].textContent = hasData ? formatClientStatDay(stats?.latest_ts) : '';
+  }
+}
+
+function formatClientStatDay(ts) {
+  if (!Number.isFinite(Number(ts))) return '';
+  return new Date(Number(ts) * 1000).toLocaleDateString(state.lang === 'zh' ? 'zh-CN' : 'en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC'
+  });
+}
+
 function renderPie({ canvas, legend, total, data, emptyLabel }) {
   const items = data?.items ?? [];
   const sum = Number(data?.total) || 0;
@@ -1778,7 +1882,7 @@ els.clientList.addEventListener('click', async (event) => {
   if (!row) return;
   state.selectedMac = row.dataset.mac || '';
   renderClients();
-  await loadSeries();
+  await Promise.all([loadSeries(), loadClientStats()]);
 });
 
 els.clientSearch.addEventListener('input', renderClients);
@@ -1795,6 +1899,7 @@ els.langToggle.addEventListener('click', () => {
   renderClients();
   renderChart();
   renderUsageCharts();
+  renderClientStats();
   renderMonthly();
   syncWorkspaceHeights();
 });

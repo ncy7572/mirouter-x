@@ -219,6 +219,16 @@ function handleApi(req, res, url) {
     return true;
   }
 
+  if (url.pathname === '/api/client-stats') {
+    const mac = url.searchParams.get('mac') || '';
+    if (!mac) {
+      sendJson(req, res, 400, { error: 'mac is required' });
+      return true;
+    }
+    sendJson(req, res, 200, store.clientStats(mac));
+    return true;
+  }
+
   if (url.pathname === '/api/series') {
     const { from, to } = parseTimeRange(url);
     const maxPoints = Number.parseInt(url.searchParams.get('maxPoints') || '900', 10);
