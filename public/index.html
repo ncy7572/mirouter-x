@@ -3,127 +3,153 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Mirouter X</title>
+    <meta name="theme-color" content="#e8dfc9">
+    <title>Mirouter X // Network Terminal</title>
     <link rel="icon" href="/router-icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/router-icon.svg">
-    <link rel="stylesheet" href="/styles.css?v=4">
+    <link rel="stylesheet" href="/styles.css?v=6">
   </head>
   <body>
     <div class="app-shell">
-      <header class="topbar">
-        <div class="brand-lockup">
-          <img class="brand-icon" src="/router-icon.svg" alt="" width="32" height="32">
-          <div>
-            <p class="eyebrow">Mirouter X</p>
-            <h1 id="routerName">Xiaomi Router</h1>
+      <header class="console-header">
+        <div class="topbar">
+          <div class="brand-lockup">
+            <div class="brand-mark">
+              <img class="brand-icon" src="/router-icon.svg" alt="" width="52" height="52">
+            </div>
+            <div class="brand-copy">
+              <p class="eyebrow"><span>MIROUTER X</span><span class="eyebrow-divider">//</span>NETWORK OS</p>
+              <h1 id="routerName">Xiaomi Router</h1>
+              <p class="brand-tagline" data-i18n="terminalTagline">Home network operations terminal</p>
+            </div>
+          </div>
+          <div class="topbar-actions">
+            <button class="status-pill" id="collectorStatus" type="button" aria-label="Toggle live updates">
+              <span class="status-led" aria-hidden="true"></span>
+              <svg class="status-refresh-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 12a9 9 0 0 1-15.3 6.4L3 16"></path>
+                <path d="M3 16v5h5"></path>
+                <path d="M3 12A9 9 0 0 1 18.3 5.6L21 8"></path>
+                <path d="M21 8V3h-5"></path>
+              </svg>
+              <span id="collectorStatusText">Connecting</span>
+            </button>
+            <label class="refresh-rate-control" title="Frontend refresh interval" data-i18n-title="frontendRefreshLabel">
+              <span id="refreshRateText" data-i18n="frontendRefreshShort">Refresh</span>
+              <input id="refreshRateSlider" type="range" min="1" max="60" step="1" value="10" aria-label="Frontend refresh interval">
+              <output id="refreshRateValue" for="refreshRateSlider">10s</output>
+            </label>
+            <select class="theme-select" id="themeSelect" aria-label="Theme">
+              <optgroup label="Light">
+                <option value="light-warm">Retro Paper</option>
+                <option value="light-sage">Retro Sage</option>
+                <option value="light-paper">Mono Paper</option>
+              </optgroup>
+              <optgroup label="Dark">
+                <option value="dark-ember">CRT Amber</option>
+                <option value="dark-forest">CRT Green</option>
+                <option value="dark-graphite">CRT Slate</option>
+              </optgroup>
+            </select>
+            <button class="lang-toggle" id="langToggle" type="button" aria-label="Switch language">中文</button>
+            <button class="icon-button" id="refreshButton" title="Collect now" aria-label="Collect now">
+              <span aria-hidden="true">↻</span>
+            </button>
           </div>
         </div>
-        <div class="topbar-actions">
-          <div class="database-size" id="databaseSize" title="SQLite data size" data-i18n-title="databaseSize">--</div>
-          <button class="status-pill" id="collectorStatus" type="button" aria-label="Toggle live updates">
-            <svg class="status-refresh-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M21 12a9 9 0 0 1-15.3 6.4L3 16"></path>
-              <path d="M3 16v5h5"></path>
-              <path d="M3 12A9 9 0 0 1 18.3 5.6L21 8"></path>
-              <path d="M21 8V3h-5"></path>
-            </svg>
-            <span id="collectorStatusText">Connecting</span>
-          </button>
-          <label class="refresh-rate-control" title="Frontend refresh interval" data-i18n-title="frontendRefreshLabel">
-            <span id="refreshRateText" data-i18n="frontendRefreshShort">Refresh</span>
-            <input id="refreshRateSlider" type="range" min="1" max="60" step="1" value="10" aria-label="Frontend refresh interval">
-            <output id="refreshRateValue" for="refreshRateSlider">10s</output>
-          </label>
-          <select class="theme-select" id="themeSelect" aria-label="Theme">
-            <optgroup label="Light">
-              <option value="light-warm">Light Warm</option>
-              <option value="light-sage">Light Sage</option>
-              <option value="light-paper">Light Paper</option>
-            </optgroup>
-            <optgroup label="Dark">
-              <option value="dark-ember">Dark Ember</option>
-              <option value="dark-forest">Dark Forest</option>
-              <option value="dark-graphite">Dark Graphite</option>
-            </optgroup>
-          </select>
-          <button class="lang-toggle" id="langToggle" type="button" aria-label="Switch language">中文</button>
-          <button class="icon-button" id="refreshButton" title="Collect now" aria-label="Collect now">
-            <span>↻</span>
-          </button>
+        <div class="console-strip">
+          <span class="strip-label">MX-01 <span aria-hidden="true">/</span> <span data-i18n="localTerminal">LOCAL TERMINAL</span></span>
+          <span class="strip-ticker" aria-hidden="true">+ + + + + + + + + + + + + + + + + + + +</span>
+          <span class="database-label">SQLITE <span class="database-size" id="databaseSize" title="SQLite data size" data-i18n-title="databaseSize">--</span></span>
         </div>
       </header>
 
       <main>
-        <section class="metrics-grid">
-          <article class="metric">
-            <span data-i18n="wanDown">WAN Down</span>
+        <section class="metrics-grid" aria-label="Router status" data-i18n-aria-label="routerStatus">
+          <article class="metric metric-down">
+            <div class="metric-heading"><span class="metric-index">01</span><span data-i18n="wanDown">WAN Down</span></div>
             <strong id="wanDown">--</strong>
+            <span class="metric-glyph" aria-hidden="true">↓</span>
           </article>
-          <article class="metric">
-            <span data-i18n="wanUp">WAN Up</span>
+          <article class="metric metric-up">
+            <div class="metric-heading"><span class="metric-index">02</span><span data-i18n="wanUp">WAN Up</span></div>
             <strong id="wanUp">--</strong>
+            <span class="metric-glyph" aria-hidden="true">↑</span>
           </article>
           <article class="metric">
-            <span data-i18n="online">Online</span>
+            <div class="metric-heading"><span class="metric-index">03</span><span data-i18n="online">Online</span></div>
             <strong id="onlineCount">--</strong>
+            <span class="metric-glyph" aria-hidden="true">●</span>
           </article>
           <article class="metric">
-            <span>CPU</span>
+            <div class="metric-heading"><span class="metric-index">04</span><span>CPU</span></div>
             <strong id="cpuLoad">--</strong>
+            <span class="metric-glyph" aria-hidden="true">▦</span>
           </article>
           <article class="metric">
-            <span data-i18n="memory">Memory</span>
+            <div class="metric-heading"><span class="metric-index">05</span><span data-i18n="memory">Memory</span></div>
             <strong id="memoryUsage">--</strong>
+            <span class="metric-glyph" aria-hidden="true">▤</span>
           </article>
           <article class="metric">
-            <span data-i18n="uptime">Uptime</span>
+            <div class="metric-heading"><span class="metric-index">06</span><span data-i18n="uptime">Uptime</span></div>
             <strong id="uptime">--</strong>
+            <span class="metric-glyph" aria-hidden="true">◷</span>
           </article>
         </section>
 
-        <section class="monthly-panel">
-          <div class="month-side">
-            <h2 data-i18n="monthlyUsage">Monthly usage</h2>
-            <div class="month-nav">
-              <button id="monthPrev" type="button" aria-label="Previous month" data-i18n-aria-label="prevMonth">‹</button>
-              <span id="monthLabel" title="--">--</span>
-              <button id="monthNext" type="button" aria-label="Next month" data-i18n-aria-label="nextMonth">›</button>
-            </div>
-            <div class="month-totals">
-              <span class="month-total down" id="monthDownTotal">↓ --</span>
-              <span class="month-total up" id="monthUpTotal">↑ --</span>
-            </div>
+        <section class="monthly-panel retro-panel">
+          <div class="section-titlebar">
+            <h2><span class="section-number">A</span><span data-i18n="monthlyUsage">Monthly usage</span></h2>
+            <span class="panel-code">ARCHIVE / 30D</span>
           </div>
-          <div class="month-chart-wrap">
-            <canvas id="monthChart" aria-label="Daily usage chart" data-i18n-aria-label="dailyUsage"></canvas>
-            <div class="empty-chart" id="monthEmpty" data-i18n="noMonthData">No data for this month</div>
-            <div class="chart-tooltip" id="monthTooltip" role="status" aria-live="polite"></div>
-          </div>
-          <div class="month-top">
-            <h2 data-i18n="topClients">Top clients</h2>
-            <div class="month-top-list" id="monthTopList"></div>
+          <div class="monthly-content">
+            <div class="month-side">
+              <div class="month-nav">
+                <button id="monthPrev" type="button" aria-label="Previous month" data-i18n-aria-label="prevMonth">‹</button>
+                <span id="monthLabel" title="--">--</span>
+                <button id="monthNext" type="button" aria-label="Next month" data-i18n-aria-label="nextMonth">›</button>
+              </div>
+              <div class="month-totals">
+                <span class="month-total down" id="monthDownTotal">↓ --</span>
+                <span class="month-total up" id="monthUpTotal">↑ --</span>
+              </div>
+            </div>
+            <div class="month-chart-wrap">
+              <canvas id="monthChart" aria-label="Daily usage chart" data-i18n-aria-label="dailyUsage"></canvas>
+              <div class="empty-chart" id="monthEmpty" data-i18n="noMonthData">No data for this month</div>
+              <div class="chart-tooltip" id="monthTooltip" role="status" aria-live="polite"></div>
+            </div>
+            <div class="month-top">
+              <h2 data-i18n="topClients">Top clients</h2>
+              <div class="month-top-list" id="monthTopList"></div>
+            </div>
           </div>
         </section>
 
         <section class="workspace">
-          <aside class="side-panel">
-            <div class="panel-head">
-              <h2><span data-i18n="clients">Clients</span> <span id="clientTotal" class="client-count">0 Total</span></h2>
+          <aside class="side-panel retro-panel">
+            <div class="panel-head section-titlebar">
+              <h2><span class="section-number">B</span><span data-i18n="clients">Clients</span><span id="clientTotal" class="client-count">0 Total</span></h2>
               <div class="client-head-actions">
                 <button id="clientMetricToggle" class="metric-toggle" type="button" aria-pressed="true">Accumulated</button>
               </div>
             </div>
             <div class="client-search">
+              <span aria-hidden="true">›</span>
               <input id="clientSearch" type="search" placeholder="Filter clients" autocomplete="off" data-i18n-placeholder="filterClients">
             </div>
             <div class="client-list" id="clientList"></div>
           </aside>
 
-          <section class="chart-panel">
-            <div class="chart-head">
-              <div>
-                <h2 id="chartTitle">WAN Traffic</h2>
-                <p id="chartSubtitle">Downstream and upstream throughput</p>
+          <section class="chart-panel retro-panel">
+            <div class="chart-head section-titlebar">
+              <div class="chart-title-group">
+                <span class="section-number">C</span>
+                <div>
+                  <h2 id="chartTitle">WAN Traffic</h2>
+                  <p id="chartSubtitle">Downstream and upstream throughput</p>
+                </div>
               </div>
               <div class="range-tools">
                 <div class="chart-controls-row">
@@ -160,6 +186,7 @@
               <button class="legend-toggle" type="button" data-series="up" aria-pressed="true">
                 <i class="up"></i><span data-i18n="up">Up</span>
               </button>
+              <span class="legend-hint" data-i18n="dragToZoom">DRAG TO ZOOM</span>
               <span id="bucketInfo"></span>
             </div>
             <div class="usage-grid">
@@ -188,28 +215,35 @@
         </section>
 
         <section class="details-grid">
-          <article class="detail-panel">
-            <div class="panel-head">
-              <h2 data-i18n="mesh">Mesh</h2>
+          <article class="detail-panel retro-panel">
+            <div class="panel-head section-titlebar">
+              <h2><span class="section-number">D</span><span data-i18n="mesh">Mesh</span></h2>
               <span id="meshStatus">--</span>
             </div>
             <div id="meshList" class="mesh-list"></div>
           </article>
-          <article class="detail-panel">
-            <div class="panel-head">
-              <h2 data-i18n="wifi">Wi-Fi</h2>
+          <article class="detail-panel retro-panel">
+            <div class="panel-head section-titlebar">
+              <h2><span class="section-number">E</span><span data-i18n="wifi">Wi-Fi</span></h2>
               <span id="wifiStatus">--</span>
             </div>
             <div id="wifiList" class="wifi-list"></div>
           </article>
         </section>
       </main>
+
+      <footer class="console-footer">
+        <span>MIROUTER X <span aria-hidden="true">©</span> LOCAL NETWORK SYSTEMS</span>
+        <span class="footer-dashes" aria-hidden="true">- - - - - - - - - -</span>
+        <span data-i18n="endTransmission">END OF TRANSMISSION</span>
+      </footer>
     </div>
 
     <div class="pie-tooltip" id="pieTooltip"></div>
 
     <div class="token-overlay" id="tokenOverlay" hidden>
       <form class="token-dialog" id="tokenForm">
+        <span class="dialog-code">AUTH / 401</span>
         <h2 data-i18n="tokenRequired">Access token required</h2>
         <p data-i18n="tokenPrompt">Enter the access token to continue.</p>
         <input type="password" id="tokenInput" autocomplete="off" placeholder="Access token" data-i18n-placeholder="tokenPlaceholder">
@@ -217,6 +251,6 @@
         <button type="submit" data-i18n="tokenSubmit">Confirm</button>
       </form>
     </div>
-    <script src="/app.js?v=4" type="module"></script>
+    <script src="/app.js?v=6" type="module"></script>
   </body>
 </html>

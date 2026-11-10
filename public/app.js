@@ -118,7 +118,9 @@ const translations = {
     databaseSize: 'SQLite data size',
     down: 'Down',
     downstreamUpstream: 'Downstream and upstream throughput',
+    dragToZoom: 'DRAG TO ZOOM',
     endTime: 'End time',
+    endTransmission: 'END OF TRANSMISSION',
     error: 'Error',
     filterClients: 'Filter clients',
     frontendRefreshLabel: 'Frontend refresh interval',
@@ -127,6 +129,7 @@ const translations = {
     live: 'Live',
     liveMode: 'Live',
     liveUpdatesLabel: 'Toggle live updates',
+    localTerminal: 'LOCAL TERMINAL',
     memory: 'Memory',
     mesh: 'Mesh',
     noDownloadData: 'No download data',
@@ -139,11 +142,13 @@ const translations = {
     offline: 'Offline',
     online: 'Online',
     root: 'root',
+    routerStatus: 'Router status',
     scaleLinear: 'Linear',
     scaleLog: 'Log',
     scaleLabel: 'Chart Y scale',
     startTime: 'Start time',
     staticMode: 'Static',
+    terminalTagline: 'Home network operations terminal',
     timeRange: 'Time range',
     total: 'Total',
     traffic: 'Traffic',
@@ -191,7 +196,9 @@ const translations = {
     databaseSize: 'SQLite 数据大小',
     down: '下载',
     downstreamUpstream: '下载与上传吞吐',
+    dragToZoom: '拖拽缩放',
     endTime: '结束时间',
+    endTransmission: '传输结束',
     error: '错误',
     filterClients: '筛选客户端',
     frontendRefreshLabel: '前端刷新间隔',
@@ -200,6 +207,7 @@ const translations = {
     live: '在线',
     liveMode: '实时',
     liveUpdatesLabel: '切换实时更新',
+    localTerminal: '本地终端',
     memory: '内存',
     mesh: 'Mesh',
     noDownloadData: '暂无下载数据',
@@ -212,11 +220,13 @@ const translations = {
     offline: '离线',
     online: '在线',
     root: '主节点',
+    routerStatus: '路由器状态',
     scaleLinear: '线性',
     scaleLog: '对数',
     scaleLabel: '图表 Y 轴缩放',
     startTime: '开始时间',
     staticMode: '静态',
+    terminalTagline: '家庭网络操作终端',
     timeRange: '时间范围',
     total: '总计',
     traffic: '流量',
@@ -252,20 +262,20 @@ const translations = {
 };
 const themeNames = {
   en: {
-    'light-warm': 'Light Warm',
-    'light-sage': 'Light Sage',
-    'light-paper': 'Light Paper',
-    'dark-ember': 'Dark Ember',
-    'dark-forest': 'Dark Forest',
-    'dark-graphite': 'Dark Graphite'
+    'light-warm': 'Retro Paper',
+    'light-sage': 'Retro Sage',
+    'light-paper': 'Mono Paper',
+    'dark-ember': 'CRT Amber',
+    'dark-forest': 'CRT Green',
+    'dark-graphite': 'CRT Slate'
   },
   zh: {
-    'light-warm': '浅色暖调',
-    'light-sage': '浅色鼠尾草',
-    'light-paper': '浅色纸白',
-    'dark-ember': '深色余烬',
-    'dark-forest': '深色森林',
-    'dark-graphite': '深色石墨'
+    'light-warm': '复古纸张',
+    'light-sage': '复古鼠尾草',
+    'light-paper': '单色纸白',
+    'dark-ember': 'CRT 琥珀',
+    'dark-forest': 'CRT 绿屏',
+    'dark-graphite': 'CRT 石板'
   }
 };
 
@@ -961,7 +971,7 @@ function renderMonthChart() {
 
   const scale = bytesAxisScale(maxY);
   ctx.fillStyle = cssColor('--muted');
-  ctx.font = '10px Inter, system-ui, sans-serif';
+  ctx.font = '10px ui-monospace, Consolas, monospace';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   const tickCount = height < 56 ? 3 : 5;
@@ -1402,7 +1412,7 @@ function renderPie({ canvas, legend, total, data, emptyLabel }) {
   ctx.arc(cx, cy, radius * 0.58, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = cssColor('--ink');
-  ctx.font = '700 13px Inter, system-ui, sans-serif';
+  ctx.font = '700 13px ui-monospace, Consolas, monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(formatBytes(sum), cx, cy);
@@ -1451,8 +1461,8 @@ function formatAxisTick(value, divisor) {
 
 function drawAxisLabels(ctx, pad, width, height, maxY, minT, maxT, mode = 'rate') {
   const scale = mode === 'bytes' ? bytesAxisScale(maxY) : rateAxisScale(maxY);
-  ctx.fillStyle = '#7d7065';
-  ctx.font = '12px Inter, system-ui, sans-serif';
+  ctx.fillStyle = cssColor('--muted');
+  ctx.font = '12px ui-monospace, Consolas, monospace';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   for (let i = 0; i <= 4; i += 1) {
@@ -1501,7 +1511,7 @@ function drawBarHover(ctx, points, x, y, pad, height) {
   const topY = y(total);
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(45, 36, 29, 0.3)';
+  ctx.strokeStyle = cssColor('--line-strong');
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 4]);
   ctx.beginPath();
@@ -1581,7 +1591,7 @@ function drawHover(ctx, points, x, y, pad, height) {
   const upY = state.visibleSeries.up ? y(point.up_bps) : null;
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(45, 36, 29, 0.3)';
+  ctx.strokeStyle = cssColor('--line-strong');
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 4]);
   ctx.beginPath();
